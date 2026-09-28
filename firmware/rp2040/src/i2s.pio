@@ -1,0 +1,86 @@
+; i2s.pio — Left-justified I2S output for PCM5102A
+;
+; Format: left-justified, 32-bit frames (24-bit audio in bits [31:8], [7:0] = 0)
+; PCM5102A must be configured for left-justified mode (FMT pin tied appropriately).
+;
+; Pins (all outputs):
+;   side-set pin 0 = BCK  (bit clock)    — GPIO I2S_BCK_PIN
+;   side-set pin 1 = WS   (word select)  — GPIO I2S_WS_PIN = I2S_BCK_PIN + 1
+;   out      pin 0 = DATA (serial data)  — GPIO I2S_DATA_PIN
+;
+; WS = 0 → left channel, WS = 1 → right channel
+; Data changes on BCK falling edge; latched by PCM5102A on BCK rising edge.
+; In left-justified format WS transitions coincide with the first data bit.
+;
+; TX FIFO word order: left_sample[31:0] then right_sample[31:0], interleaved.
+;
+; Timing:
+;   BCK  = fs * bits_per_channel * 2_channels = 48000 * 32 * 2 = 3.072 MHz
+;   PIO instruction rate = 2 * BCK = 6.144 MHz
+;   At 125 MHz sys_clk: clkdiv = 125e6 / 6.144e6 ≈ 20.345
+;   (computed exactly in i2s_out_program_init below)
+
+.program i2s_out
+.side_set 2
+
+; Autopull: shift LEFT (MSB first), threshold = 32, FIFO join = TX
+
+.wrap_target
+
+    ; ---- LEFT channel (WS = 0) ----
+    ; Bit 31 goes out simultaneously with WS going low (left-justified).
+    out pins, 1         side 0b00   ; WS=0, BCK=0: bit 31 of left on DATA
+    set x, 30           side 0b01   ; WS=0, BCK=1: latch bit 31; x = 30 more bits
+left_loop:
+    out pins, 1         side 0b00   ; WS=0, BCK=0: output next bit
+    jmp x-- left_loop   side 0b01   ; WS=0, BCK=1: latch; loop until x == 0
+
+    ; ---- RIGHT channel (WS = 1) ----
+    out pins, 1         side 0b10   ; WS=1, BCK=0: bit 31 of right on DATA
+    set x, 30           side 0b11   ; WS=1, BCK=1: latch bit 31
+right_loop:
+    out pins, 1         side 0b10   ; WS=1, BCK=0: output next bit
+    jmp x-- right_loop  side 0b11   ; WS=1, BCK=1: latch
+
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/pio.h"
+
+// Initialise the I2S PIO state machine.
+//
+// data_pin  — GPIO for serial DATA output
+// bck_pin   — GPIO for BCK; WS must be assigned to (bck_pin + 1)
+// sample_rate — audio sample rate in Hz (e.g. 48000)
+static inline void i2s_out_program_init(PIO pio, uint sm, uint offset,
+                                         uint data_pin, uint bck_pin,
+                                         float sample_rate)
+{
+    pio_gpio_init(pio, data_pin);
+    pio_gpio_init(pio, bck_pin);       // BCK
+    pio_gpio_init(pio, bck_pin + 1);   // WS (must be BCK + 1)
+
+    pio_sm_set_consecutive_pindirs(pio, sm, data_pin, 1, true);   // DATA out
+    pio_sm_set_consecutive_pindirs(pio, sm, bck_pin,  2, true);   // BCK+WS out
+
+    pio_sm_config c = i2s_out_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, data_pin, 1);
+    sm_config_set_sideset_pins(&c, bck_pin);
+
+    // Shift LEFT (MSB first), autopull, 32-bit threshold
+    sm_config_set_out_shift(&c, false, true, 32);
+
+    // Join FIFOs for a deeper TX FIFO (8 words instead of 4)
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    // BCK = sample_rate * 32 bits/ch * 2 channels
+    // PIO runs at 2 * BCK (two instructions per BCK cycle)
+    float bck_hz = sample_rate * 32.0f * 2.0f;
+    float div    = (float)clock_get_hz(clk_sys) / (2.0f * bck_hz);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
