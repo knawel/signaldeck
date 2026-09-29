@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/clocks.h"
 
 // External LED: GP29 → 330 Ω → LED anode, LED cathode → GND.
 // (The onboard LED on GP16 is a WS2812 RGB LED and can't be driven with gpio_put.)
@@ -18,6 +19,7 @@ int main(void) {
     //         Hint: two calls — one to init the pin, one to set its direction.
 
     uint32_t count = 0;
+
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
     while (true) {
@@ -27,9 +29,10 @@ int main(void) {
         gpio_put(LED_PIN, 0);
         sleep_ms(BLINK_MS*28);
 
-        // TODO 3: print the counter, e.g. "blink 42".
-        //         Which printf format specifier matches uint32_t?
+        uint32_t time0 = time_us_32();
         printf("blink %lu\n", count);
+        uint32_t time1 = time_us_32();
+        printf("time: %lu\n us", time1 - time0);
         count++;
     }
 }
