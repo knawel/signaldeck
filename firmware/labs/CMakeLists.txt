@@ -35,3 +35,4 @@ add_compile_options(-Wall -Wextra)
 
 # One executable per lab — add a line here when starting a new lab
 add_subdirectory(00-hello)
+add_subdirectory(01-square-tone)

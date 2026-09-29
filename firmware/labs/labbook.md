@@ -12,8 +12,8 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 
 | # | Lab | Status |
 |---|---|---|
-| 0 | Toolchain, hello, blink | ⬜ in progress |
-| 1 | 1-bit square-wave tone | ⬜ |
+| 0 | Toolchain, hello, blink | ✅ done |
+| 1 | 1-bit square-wave tone | ⬜ in progress |
 | 2 | PWM DAC + RC low-pass filter | ⬜ |
 | 3 | Sine synth (lookup table + phase accumulator) | ⬜ |
 | 4 | Interrupt → DMA sample feeding | ⬜ |
@@ -196,6 +196,112 @@ USB serial takes about a second to appear after boot, so the first prints can be
 *What went wrong and how I fixed it:*
 
 *Measured voltage on GP29 at 1 ms blink:*
+
+*Questions for next time:*
+
+---
+
+## Lab 1 — 1-bit square-wave tone
+
+### Goal
+Make your first sound: switch one pin between 0 V and 3.3 V hundreds of times per second, and hear it. This is the crudest DAC possible, with just two output levels.
+
+### Background
+- **Frequency and period.** A tone of frequency *f* repeats every *T = 1/f* seconds. At 440 Hz, *T* ≈ 2 273 µs. A square wave spends half of *T* high and half low, so you wait *T/2* twice.
+- **Integer division truncates.** `1000000 / 880` is `1136`, not `1136.36…`. The remainder is thrown away, so the tone you get is slightly off. How far off? That's TODO 3.
+- **Why a square wave sounds buzzy.** Mathematically, a square wave is the fundamental frequency plus every **odd harmonic** (3*f*, 5*f*, 7*f*…), at amplitudes 1/3, 1/5, 1/7…. A pure sine tone has no harmonics. Removing them is what labs 2 and 3 are about.
+- **Busy-waiting vs a hardware timer.** In part A, `sleep_us()` keeps the CPU occupied timing the pin, and anything else you add to the loop (like a `printf`) makes the timing wrong. In part B, a **hardware timer** raises an *interrupt* every half period. The CPU stops whatever it's doing, runs your small callback function, then carries on. You'll use this pattern for all real audio work.
+- **Function pointers.** You pass `toggle_callback` itself (not its result) to the timer. In C, a function's name without `()` is its address. The SDK stores that address and calls the function later.
+- **DC blocking.** The pin swings between 0 and 3.3 V, so on average it sits at **+1.65 V DC**. DC through a headphone driver does nothing useful: it pushes the membrane off-centre and heats the voice coil. A series capacitor passes the changing (AC) part and blocks the DC part.
+
+### Parts
+- 1 × 1 kΩ resistor (limits current, sets volume)
+- 1 × 47 µF electrolytic capacitor, rated ≥ 6.3 V (DC blocking; anything from 10 µF up works)
+- 3.5 mm stereo socket or breakout
+- Cheap earbuds or a powered speaker's line input. **Don't use good headphones.**
+- A phone with a free **tuner app**, to measure the pitch you produce
+
+### Wiring (zone B)
+
+```text
+                            47 µF
+  GP14 ──[ 1 kΩ ]────────(+)┤├(−)──┬──── jack TIP   (left)
+                                    └──── jack RING  (right)  ← join both: sound in both ears
+  GND rail ──────────────────────────────── jack SLEEVE
+```
+
+- **Electrolytic capacitors have polarity.** The **+** leg (longer leg; the stripe marks **−**) faces GP14, because that side sits at +1.65 V on average.
+- **Rough volume:** earbuds are about 32 Ω, so the 1 kΩ resistor and the earbud form a voltage divider: 3.3 V × 32 / (1000 + 32) ≈ **0.1 V peak-to-peak** across the earbud. That's audible and safe, but square waves are harsh. **Start with the earbuds out of your ears, held near them.** Use 2.2 kΩ if it's too loud.
+- **High-pass corner:** the capacitor and the resistance form a filter that blocks very low frequencies. *f = 1 / (2π · 1032 Ω · 47 µF)* ≈ 3.3 Hz, far below hearing (≈ 20 Hz). A 10 µF capacitor would give ≈ 15 Hz, also fine. A bigger capacitor just lets even lower frequencies through.
+- **Start-up thump:** when the tone starts, the capacitor has to charge to the pin's +1.65 V average through the resistor. The time constant is *τ = R · C* ≈ 1032 Ω × 47 µF ≈ 50 ms, and you may hear it as a soft thump at start or after a reset. That's normal (10 µF would give ≈ 10 ms, a quieter thump). Real audio gear adds anti-pop circuits to hide it.
+
+### Tasks
+
+**1.1 Build the untouched skeleton.** Pick `01-square-tone/lab01_square_tone` when you click Run. You'll see one warning: `unused variable 'half_period_us'`. That's the compiler noticing your unfinished TODO, and it goes away once you use the variable.
+
+**1.2 Part A: busy-wait tone** (`USE_TIMER 0`)
+- TODO 1–4: set up the pin, compute the half period, print what you'll get, and toggle it in the loop.
+- Listen, then measure the pitch with the tuner app. Is it 440 Hz?
+
+**1.3 Break it on purpose.** Add a `printf` inside the part A loop. Listen: what happens to the pitch and to the sound quality? Measure again. *(Remember lab 0: one `printf` ≈ 77 µs.)*
+
+**1.4 Part B: timer tone** (`USE_TIMER 1`)
+- TODO 6–8: flip the pin in the callback, start the repeating timer, and print once per second from the main loop.
+- Does the `printf` in the main loop still disturb the tone? Why or why not?
+
+### Hints (read only if stuck)
+<details><summary>TODO 2: half period</summary>
+
+1 s = 1 000 000 µs. A full period is `1000000 / TONE_HZ` µs, and you need half of that. Is it better to write `1000000 / TONE_HZ / 2` or `1000000 / (2 * TONE_HZ)`? Try some frequencies where the order matters for truncation.
+</details>
+
+<details><summary>TODO 3: the frequency you actually get</summary>
+
+Turn it around: actual *f* = 1 000 000 / (2 × half_period_us). Printing it with decimals needs `float` or a trick. Try printing it in **milli-hertz** using integers only: `1000000000 / (2 * half_period_us)`.
+</details>
+
+<details><summary>TODO 6: flipping a pin</summary>
+
+Two ways: `gpio_put(AUDIO_PIN, !gpio_get(AUDIO_PIN));` reads the pin and writes the opposite, or `gpio_xor_mask(1u << AUDIO_PIN);` flips it in one hardware operation. What does `1u << 14` evaluate to in binary?
+</details>
+
+<details><summary>TODO 7: starting the timer</summary>
+
+`add_repeating_timer_us(delay_us, callback, user_data, &timer)`. Use `NULL` for user_data. The **sign** of `delay_us` matters: a negative value means "measured from the start of one callback to the start of the next", which is what you want for a steady tone. Check the SDK docs for what a positive value means.
+
+`timer` must stay alive while the timer runs. Declaring it in `main()`, which never returns, does that.
+</details>
+
+<details><summary>TODO 8: once per second without sleep_ms?</summary>
+
+`sleep_ms(1000)` is fine here. The timer interrupt keeps toggling the pin while `main` sleeps. That's the whole point of part B.
+</details>
+
+### Stretch challenges
+- [ ] **Hearing range:** try 50 Hz, 1 kHz, 10 kHz, 15 kHz, 18 kHz. Where does it stop being audible for you? What happens to `half_period_us` accuracy at high frequencies?
+- [ ] **Duty cycle:** make the high part 25 % of the period instead of 50 %. How does it sound? Measure the pin with a multimeter at 50 % and at 25 %. *(Preview of lab 2.)*
+- [ ] **Melody:** define `struct note { uint32_t hz; uint32_t ms; };` and an array of notes, then play them in a loop. Use 0 Hz for a rest. Arrays and structs are your C concepts here.
+
+### Checks
+- [ ] Hear a steady tone in part A
+- [ ] Tuner app shows ≈ 440 Hz. Record the exact reading in Notes.
+- [ ] Printed actual frequency matches what you calculated by hand
+- [ ] Explain what the `printf` in the part A loop did to the sound
+- [ ] Part B: tone stays steady while the main loop prints
+- [ ] Zero warnings in the mode you finish in
+
+### Notes
+*Date:*
+
+*Calculated half period / actual frequency:*
+
+*Tuner app reading (part A / with printf / part B):*
+
+*Highest frequency I can hear:*
+
+*Capacitor used (value, voltage rating) and how its polarity was marked:*
+
+*Did I hear the start-up thump?*
 
 *Questions for next time:*
 
