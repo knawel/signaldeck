@@ -28,7 +28,7 @@
 #define REST      0      // silence
 
 #define Q   400     // quarter note, ms: this sets the tempo
-#define S   (Q / 2) // sixteenth note
+#define S   (Q / 4) // sixteenth note
 #define E   (Q / 2) // eighth note
 
 #define GAP   20      // ms of silence between notes
@@ -75,12 +75,12 @@ static void play_note(uint32_t hz, uint32_t ms) {
     uint32_t cycles = ms * 1000 / (half_period_us * 2);
 
     for (uint32_t i = 0; i < cycles; ++i) {
-        sleep_us(GAP); // optional gap between notes
         gpio_put(AUDIO_PIN, 1);
         sleep_us(half_period_us);
         gpio_put(AUDIO_PIN, 0);
         sleep_us(half_period_us);
     }
+    sleep_us(GAP); // optional gap between notes
 }
 
 // Part A: 0 = toggle the pin from the main loop with sleep_us()
@@ -113,8 +113,6 @@ int main(void) {
     // TODO 3: print half_period_us AND the frequency you will actually get.
     //         Integer division throws away the remainder — is it exactly TONE_HZ?
     printf("half period: %lu us, frequency: %lu Hz\n", half_period_us, 1000000 / (half_period_us * 2));
-
-    #define struct notes  
 
 #if USE_TIMER
     struct repeating_timer timer;
