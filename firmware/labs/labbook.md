@@ -13,8 +13,8 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | # | Lab | Status |
 |---|---|---|
 | 0 | Toolchain, hello, blink | ✅ done |
-| 1 | 1-bit square-wave tone | ⬜ in progress |
-| 2 | PWM DAC + RC low-pass filter | ⬜ |
+| 1 | 1-bit square-wave tone | ✅ done |
+| 2 | PWM DAC + RC low-pass filter | ✅ done |
 | 3 | Sine synth (lookup table + phase accumulator) | ⬜ |
 | 4 | Interrupt → DMA sample feeding | ⬜ |
 | 5 | 8-bit R-2R ladder DAC | ⬜ |
@@ -331,14 +331,14 @@ Get **many output levels from one digital pin**. You'll switch GP14 on and off h
   - GPIO → slice: slice = (gpio ÷ 2) mod 8, and even pins are channel A. GP14 is **slice 7, channel A**, and GP15 is slice 7 B. That's why the pin plan put audio there.
   - The compare value is **double-buffered**: a new level takes effect at the next wrap, never halfway through a period. You can change it whenever you like without making a glitch.
 
-- **Resolution vs frequency: the PWM trade-off.** More levels means more counter steps per period, and so a slower period. You measured f_sys in the lab 0 stretch. SDK 2.1.1 and later run the RP2040 at **200 MHz** by default (older SDKs used 125 MHz). The code computes this from `clock_get_hz()`, so use your own number:
+- **Resolution vs frequency: the PWM trade-off.** More levels means more counter steps per period, and so a slower period. You measured f_sys in the lab 0 stretch: **125 MHz**. That's the SDK's default for the RP2040. It only runs at 200 MHz if `PICO_USE_FASTEST_SUPPORTED_CLOCK` is set, which your board doesn't do. The code computes f_PWM from `clock_get_hz()`, so trust what it prints:
 
-  | TOP | Levels (bits) | f_PWM @ 200 MHz | f_PWM @ 125 MHz |
+  | TOP | Levels (bits) | f_PWM @ 125 MHz (yours) | f_PWM @ 200 MHz |
   |---|---|---|---|
-  | 255 | 256 (8) | 781 kHz | 488 kHz |
-  | 1023 | 1024 (10) | 195 kHz | 122 kHz |
-  | 4095 | 4096 (12) | 48.8 kHz | 30.5 kHz |
-  | 65535 | 65536 (16) | 3.05 kHz | 1.9 kHz ← you'd *hear* the switching |
+  | 255 | 256 (8) | 488 kHz | 781 kHz |
+  | 1023 | 1024 (10) | 122 kHz | 195 kHz |
+  | 4095 | 4096 (12) | 30.5 kHz | 48.8 kHz |
+  | 65535 | 65536 (16) | 1.9 kHz ← you'd *hear* the switching | 3.05 kHz |
 
   The carrier (the switching frequency) has to sit far above the audio so a simple filter can separate the two. That's why this lab uses 8 bits. The PCM5102A gets 24 bits out of 3.3 V in a completely different way (lab 7).
 
@@ -348,15 +348,15 @@ Get **many output levels from one digital pin**. You'll switch GP14 on and off h
   f_c = 1 / (2π · R1 · C1) = 1 / (2π · 1 kΩ · 100 nF) ≈ 1.6 kHz
   ```
   - Above *f_c* the output falls by **20 dB per decade** (×10 in frequency means ÷10 in amplitude). That's a *first-order* filter.
-  - The carrier at 781 kHz is ~490 × *f_c*, so it's attenuated about 490×, or −54 dB.
+  - The carrier at 488 kHz is ~305 × *f_c*, so it's attenuated about 305×, or −50 dB.
   - A 440 Hz tone loses only ~4 % (−0.3 dB). A 5 kHz tone loses ~70 % (−10 dB). **A lower f_c means less ripple but duller treble.** Every PWM DAC has this tension.
   - **Ripple**, the carrier that survives, is worst at 50 % duty. When RC is much larger than the PWM period *T*:
 
     ```text
     ripple_pp ≈ 3.3 V · D(1−D) · T / (R1·C1)
-              = 3.3 · 0.25 · 1.28 µs / 100 µs ≈ 11 mV     (200 MHz, TOP = 255)
+              = 3.3 · 0.25 · 2.05 µs / 100 µs ≈ 17 mV     (125 MHz, TOP = 255)
     ```
-    One 8-bit step is 3.3 V / 256 ≈ 13 mV, so the ripple is **smaller than one step**. The filter is well matched to the resolution. Keep that comparison in mind for the stretch challenges.
+    One 8-bit step is 3.3 V / 256 ≈ 13 mV, so the ripple is **about one step**: slightly more at 50 % duty, less towards 0 % and 100 %. The filter is roughly matched to the resolution, but only just. At 200 MHz the period is shorter and the ripple drops to ≈ 11 mV, under one step. Keep this comparison in mind for the stretch challenges.
 
 - **Don't load the filter.** Earbuds are about 32 Ω. Connect them straight to the filter output and they swamp C1, turning R1 and the earbud into a plain 1 kΩ : 32 Ω divider. The filter then effectively disappears (*f_c* jumps to ~50 kHz). R2 = 1 kΩ keeps the load at about 1 kΩ: the filter still works (*f_c* ≈ 3 kHz with the load attached), and the earbud level stays safe at about half of lab 1's. In the final device, a headphone amplifier with a high input impedance does this job.
 
@@ -392,7 +392,7 @@ Rebuild lab 1's circuit: the lab 1 resistor becomes R1, and you add C1, R2 and t
 
 ### Tasks
 
-**2.1 Build the untouched skeleton.** Pick `02-pwm-dac/lab02_pwm_dac` when you click Run. It should build. In part B you'll get `unused` warnings (`timer`, `sample_callback`) until you finish the TODOs.
+**2.1 Build the untouched skeleton.** Pick `02-pwm-dac/lab02_pwm_dac` when you click Run. It should build with `unused` warnings until you finish the TODOs: `read_filt_mv` in part A, and `i`, `timer`, `sample_callback` in part B.
 
 **2.2 Part A: DC levels** (`PART_B 0`)
 - TODO 1–3: set up PWM on GP14, print f_sys and f_PWM, and set up the ADC. Check that the printed f_PWM matches the table above.
@@ -468,11 +468,11 @@ if (++i >= samples_per_period) i = 0;
 
 <details><summary>TODO 8: 20 000 times a second</summary>
 
-Same as lab 1: `add_repeating_timer_us(-(1000000 / SAMPLE_RATE_HZ), sample_callback, NULL, &timer)`. That's one interrupt every 50 µs. At 200 MHz that's 10 000 CPU cycles per sample, so there's plenty of room. Lab 4 hands this job to DMA so the CPU gets all of it back.
+Same as lab 1: `add_repeating_timer_us(-(1000000 / SAMPLE_RATE_HZ), sample_callback, NULL, &timer)`. That's one interrupt every 50 µs. At 125 MHz that's 6 250 CPU cycles per sample, so there's plenty of room. Lab 4 hands this job to DMA so the CPU gets all of it back.
 </details>
 
 ### Stretch challenges
-- [ ] **Hear the carrier:** add `pwm_set_clkdiv(slice, 100.0f)` in part B. f_PWM drops to ~7.8 kHz (at 200 MHz), well inside hearing and far too close to the audio for the filter. What do you hear? What did the extra noise tell you about why the carrier has to be ultrasonic?
+- [ ] **Hear the carrier:** add `pwm_set_clkdiv(slice, 100.0f)` in part B. f_PWM drops to ~4.9 kHz (at 125 MHz), well inside hearing and far too close to the audio for the filter. What do you hear? What did the extra noise tell you about why the carrier has to be ultrasonic?
 - [ ] **Resolution vs ripple:** set `PWM_TOP` to 4095 (12-bit). Use the ripple formula to calculate the new ripple and compare it with the new step size (3.3 V / 4096 ≈ 0.8 mV). Was that worth 4 extra bits? *(If you have a scope, look at FILT at 50 % duty with both settings.)*
 - [ ] **Volume = fewer bits:** in part B, set `AMPLITUDE` to 64, then 16, then 4. The tone gets quieter, and it gets *grittier*, because a triangle with only 4 steps is a staircase. You're hearing **quantization noise**. This is why digital volume controls lose resolution and why the project uses an analog pot.
 - [ ] **Second-order filter:** add a second R–C stage (another 1 kΩ + 100 nF) after C1. Each stage adds another −20 dB/decade. What happens to the carrier, and what happens to a 5 kHz tone?

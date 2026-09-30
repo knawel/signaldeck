@@ -24,7 +24,7 @@
 
 // Part A: 0 = step through fixed DC levels and measure each one
 // Part B: 1 = play a triangle-wave tone by changing the level SAMPLE_RATE_HZ times a second
-#define PART_B      0
+#define PART_B      1
 
 #define SAMPLE_RATE_HZ  20000
 #define TONE_HZ         440
@@ -34,7 +34,12 @@
 static uint32_t read_filt_mv(void) {
     // TODO 4: add up ADC_SAMPLES calls to adc_read() (12-bit: 0 … 4095),
     //         then convert the sum to millivolts. Watch out for overflow and truncation.
-    return 0;
+    uint32_t sum = 0;
+    for (int i = 0; i < ADC_SAMPLES; i++) {
+        sum += adc_read();
+    }
+    return (sum * VREF_MV) / (ADC_SAMPLES * 4096);
+
 }
 
 #if PART_B
@@ -48,7 +53,19 @@ static bool sample_callback(struct repeating_timer *t) {
 
     // TODO 6: first half of the period ramp the level up from 0 to AMPLITUDE,
     //         second half ramp it back down. Then advance i and wrap it at samples_per_period.
-
+    uint32_t half = samples_per_period / 2;
+    uint32_t level;
+    if (i < half) {
+        level = (i * AMPLITUDE) / half;
+    } else {
+        level = ((samples_per_period - i) * AMPLITUDE) / half;
+    }
+    pwm_set_gpio_level(AUDIO_PIN, level);
+    
+    i++;
+    if (i >= samples_per_period) {
+        i = 0;
+    }
     return true;
 }
 #endif
@@ -59,20 +76,36 @@ int main(void) {
 
     // TODO 1: hand AUDIO_PIN to the PWM peripheral, find out which slice it belongs to,
     //         set that slice's wrap value to PWM_TOP and enable it.
+    gpio_set_function(AUDIO_PIN, GPIO_FUNC_PWM);
+    uint slice_num = pwm_gpio_to_slice_num(AUDIO_PIN);
+    pwm_set_wrap(slice_num, PWM_TOP);
+    pwm_set_enabled(slice_num, true);
+    // pwm_set_clkdiv(slice_num, 10.0f); // Set clock divider to 1 for maximum frequency
 
     // TODO 2: print the system clock and the PWM frequency it gives you.
+    printf("System clock: %lu Hz\n", clock_get_hz(clk_sys));
+    printf("PWM frequency: %lu Hz\n", clock_get_hz(clk_sys) / (PWM_TOP + 1));
 
     // TODO 3: set up the ADC and route ADC_PIN into it.
+    adc_init();
+    adc_gpio_init(ADC_PIN);
+    adc_select_input(ADC_INPUT);
+
 
 #if PART_B
     samples_per_period = SAMPLE_RATE_HZ / TONE_HZ;
 
     // TODO 7: print samples_per_period and the tone frequency you will actually get.
     //         Integer division again — compare with lab 1.
+    printf("Samples per period: %lu\n", samples_per_period);
+    printf("Tone frequency: %lu Hz\n", SAMPLE_RATE_HZ / samples_per_period);
+
 
     struct repeating_timer timer;
 
     // TODO 8: start a repeating timer that calls sample_callback SAMPLE_RATE_HZ times a second.
+
+    add_repeating_timer_us(-(1000000 / SAMPLE_RATE_HZ), sample_callback, NULL, &timer);
 
     while (true) {
         printf("FILT: %lu mV\n", read_filt_mv());
@@ -86,6 +119,11 @@ int main(void) {
         for (uint32_t k = 0; k < sizeof levels / sizeof levels[0]; k++) {
             // TODO 5: set the PWM level to levels[k], wait for FILT to settle,
             //         then print the level, the voltage you expect and the voltage the ADC measures.
+            pwm_set_gpio_level(AUDIO_PIN, levels[k]);
+            sleep_ms(2000);
+            printf("Level: %lu, expected: %lu mV, measured: %lu mV\n", levels[k], (levels[k] * VREF_MV) / PWM_TOP
+, read_filt_mv());
+
         }
     }
 #endif
