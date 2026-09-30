@@ -106,8 +106,8 @@
             "id": "lab",
             "type": "pickString",
             "description": "Which lab to flash?",
-            "options": ["00-hello/lab00_hello", "01-square-tone/lab01_square_tone", "02-pwm-dac/lab02_pwm_dac"],
-            "default": "02-pwm-dac/lab02_pwm_dac"
+            "options": ["00-hello/lab00_hello", "01-square-tone/lab01_square_tone", "02-pwm-dac/lab02_pwm_dac", "03-sine-dds/lab03_sine_dds"],
+            "default": "03-sine-dds/lab03_sine_dds"
         }
     ]
 }

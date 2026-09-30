@@ -15,7 +15,7 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | 0 | Toolchain, hello, blink | ✅ done |
 | 1 | 1-bit square-wave tone | ✅ done |
 | 2 | PWM DAC + RC low-pass filter | ✅ done |
-| 3 | Sine synth (lookup table + phase accumulator) | ⬜ |
+| 3 | Sine synth (lookup table + phase accumulator) | ⬜ in progress |
 | 4 | Interrupt → DMA sample feeding | ⬜ |
 | 5 | 8-bit R-2R ladder DAC | ⬜ |
 | 6 | *(optional)* Sigma-delta output via PIO | ⬜ |
@@ -514,6 +514,152 @@ Same as lab 1: `add_repeating_timer_us(-(1000000 / SAMPLE_RATE_HZ), sample_callb
 *Tuner app reading (part B):*
 
 *Lowest AMPLITUDE that still sounds like a clean tone:*
+
+*Questions for next time:*
+
+---
+
+## Lab 3 — Sine synth: lookup table + phase accumulator
+
+### Goal
+Play a **pure sine tone** at **any** frequency, accurate to millionths of a hertz, spending only a few CPU cycles per sample. Then sweep the frequency upwards and *hear* the Nyquist limit.
+
+### Background
+- **Why a sine?** Square (lab 1) and triangle (lab 2) waves are a fundamental plus harmonics. A sine is *only* the fundamental, the purest tone there is. Every other sound can be built from sines, so a sine generator is the "hello world" of audio DSP.
+
+- **Why a lookup table?** `sinf()` on the Cortex-M0+ is a slow software routine (no floating-point hardware, remember lab 0). You can't afford it 20 000 times a second in an interrupt. So you compute **one period** of the sine **once** at startup, store it in an array, and just *read* from it later:
+
+  ```text
+  n:       0     64    128    192    255
+  angle:   0°    90°   180°   270°   ~359°
+  value:   128   255   128    1      125       value = 128 + 127·sin(angle)
+  ```
+  The sine swings ±127 around the middle PWM level, so the output sits at 1.65 V ± 1.64 V: the full range of the 8-bit PWM DAC from lab 2.
+
+- **The phase accumulator: the key idea of this lab.** Picture the table as a clock face with 256 positions. Each sample, you step forward a fixed amount and read the value where you land. **Bigger steps mean going round faster, so a higher frequency.**
+
+  A 256-position clock only allows whole steps, which gives coarse frequencies (lab 2's 444.4 Hz problem). The trick is to keep the position with far more precision than the table has. Use a whole `uint32_t` as the phase:
+
+  ```text
+   phase (32 bits):  [ 8-bit table index | 24 bits of "fraction" ]
+                       ↑ phase >> 24        ↑ keeps the fine position between table entries
+  ```
+  - `0 … 2³² − 1` is one full circle. Adding `phase_inc` every sample moves around it.
+  - **Overflow is a feature:** when `phase` passes 2³² − 1, unsigned arithmetic wraps back to 0. That's exactly "going round the circle again", for free. (Unsigned wrap-around bit you in lab 1. Here it's what you want.)
+  - The table index is just the **top 8 bits**: `phase >> 24`.
+
+- **Tuning word.** To get *f* Hz at sample rate *f_s*, the phase must go round *f* times per second, i.e. advance 2³² · *f* / *f_s* per sample:
+
+  ```text
+  phase_inc = f × 2³² / f_s = 440 × 4 294 967 296 / 20 000 = 94 489 280.5…  →  94 489 280
+  actual f  = phase_inc × f_s / 2³² = 439.999 997 6 Hz
+  ```
+  Frequency resolution is *f_s* / 2³² ≈ **0.000 005 Hz**. Compare that with lab 2's 444.4 Hz. This technique is called **DDS** (direct digital synthesis), and it's in every function generator and synthesiser.
+  - `440 × 2³²` is about 1.9 × 10¹², far beyond `uint32_t`, so the multiplication needs **64-bit** arithmetic (`uint64_t`). The *result* fits in 32 bits again.
+
+- **`volatile`.** `main()` writes `phase_inc` (in part B's sweep) while the interrupt reads it. Without `volatile`, the optimiser may assume nothing else changes the variable and keep a stale copy in a CPU register. `volatile` means "always really read and write memory". Any variable shared between an interrupt and the main code needs it. (Lab 4 goes deeper.)
+
+- **Nyquist and aliasing.** With *f_s* = 20 kHz you get 20 000 snapshots per second. A tone above *f_s / 2* = **10 kHz** (the **Nyquist frequency**) is sampled less than twice per cycle, and the samples trace out a *different, lower* tone: an **alias**, at *f_s − f*. So 12 kHz sounds like 8 kHz, and 18 kHz like 2 kHz. In the part B sweep, the pitch rises to 10 kHz, then *falls* again even though the number keeps going up. In the tuning-word maths, going round "almost a full circle" per sample looks the same as going *backwards* a little.
+
+- **Images: why the filter matters.** Each sample is *held* for 50 µs (a staircase, a "zero-order hold"). A staircase at *f* also contains copies of the tone at *f_s ± f*, *2f_s ± f*… A real DAC has a sharp filter at *f_s / 2* to remove these. Your 1.6 kHz RC filter only rolls off gently, so at high frequencies you may hear the image faintly *together with* the real tone. This is why the PCM5102A (lab 7) oversamples 8× internally.
+
+### Parts
+Nothing new: the lab 2 circuit stays as it is (R1 1 kΩ, C1 100 nF, 47 µF, R2 1 kΩ, jack). The GP26 ADC wire can stay connected. This lab doesn't use it.
+
+### Tasks
+
+**3.1 Build the untouched skeleton.** Pick `03-sine-dds/lab03_sine_dds` when you click Run. Expect a `'phase' defined but not used` warning until TODO 3.
+
+**3.2 Part A: steady sine** (`PART_B 0`)
+- TODO 1: build the table. TODO 5: print entries 0, 64, 128, 192 and compare with the table in Background.
+- TODO 2 and 6: the tuning word and the actual frequency. Do you get 94 489 280 and 439 999 mHz?
+- TODO 3 and 4: the callback and the PWM setup. Listen.
+- Compare, at the same pitch: lab 1's square, lab 2's triangle, lab 3's sine. Describe the difference in Notes.
+- Tuner app: how close to 440.0 Hz?
+
+**3.3 Part B: sweep** (`PART_B 1`), TODO 7
+- **Earbuds out of your ears for this one.** High frequencies are piercing.
+- Listen for the pitch turning round at 10 kHz. Note where you lose hearing it (18 kHz? 15 kHz?) and where the alias comes back as a *low* tone.
+- Pick three frequencies above 10 kHz and check with the tuner app that you hear *f_s − f*.
+
+### Hints (read only if stuck)
+<details><summary>TODO 1: the table</summary>
+
+```c
+float angle = 2.0f * (float)M_PI * (float)n / TABLE_SIZE;
+sine_table[n] = (uint16_t)lroundf(PWM_LEVELS / 2 + 127.0f * sinf(angle));
+```
+- `M_PI` comes from `<math.h>`. `lroundf` rounds to the nearest integer, while a plain cast would truncate (so 254.9 → 254).
+- Why 127 and not 128? 128 + 128 = 256 would be "always on", and 128 − 128 = 0 "always off". That's legal in PWM, but it makes the top and bottom of the wave asymmetric by one step. Try it and think about it.
+- The `f` suffix (`2.0f`) keeps the maths in `float`. Without it, `2.0` is a `double`, which is even slower on the M0+.
+</details>
+
+<details><summary>TODO 2: tuning word</summary>
+
+```c
+return (uint32_t)(((uint64_t)hz << 32) / SAMPLE_RATE_HZ);
+```
+`<< 32` is × 2³². The cast to `uint64_t` must happen **before** the shift. Shifting a 32-bit value by 32 is *undefined behaviour* in C, not zero.
+</details>
+
+<details><summary>TODO 3: the callback (3 lines)</summary>
+
+`phase += phase_inc;`, then `phase >> (32 - TABLE_BITS)` gives the index, then `pwm_set_gpio_level(AUDIO_PIN, sine_table[index]);`. No `if`, no wrap check: the overflow *is* the wrap.
+</details>
+
+<details><summary>TODO 6: actual frequency in milli-hertz</summary>
+
+`(uint32_t)(((uint64_t)phase_inc * SAMPLE_RATE_HZ * 1000) >> 32)`. Check that the 64-bit intermediate can't overflow: 94 489 280 × 20 000 × 1000 ≈ 1.9 × 10¹⁵, and `uint64_t` goes up to 1.8 × 10¹⁹.
+</details>
+
+<details><summary>TODO 7: the sweep</summary>
+
+```c
+for (uint32_t hz = 100; hz <= 19000; hz += 100) {
+    phase_inc = phase_inc_for(hz);
+    if (hz % 1000 == 0) printf("%lu Hz\n", hz);
+    sleep_ms(50);
+}
+```
+</details>
+
+### Stretch challenges
+- [ ] **Melody with sines:** bring back lab 1's `struct note` array and play it by changing `phase_inc`. Notice how *easy* changing pitch is now: one assignment, no timer restart. Handle `REST` by setting `phase_inc` to 0. What does the output do then?
+- [ ] **Table size:** try `TABLE_BITS` 4 (16 entries) and 10 (1024). Can you hear the difference? The coarse table makes a staircase, which adds harmonics. Why doesn't the pitch change?
+- [ ] **Chord:** add a second phase accumulator and play 440 Hz + 554 Hz (a major third) together. Adding two ±127 sines gives ±254. That's out of range! Scale each by ½. What do you hear if you *don't*? *(Clipping.)*
+- [ ] **Quarter-wave table:** a sine's four quarters are mirror images. Store only 64 entries and reconstruct the rest with symmetry. This saves 75 % of the memory, and real synth chips do it.
+- [ ] **`const` table in flash:** generate the 256 values with a small Python script, paste them into a `static const uint16_t sine_table[] = { … };`, and drop `build_sine_table()`. Where does the table live now: RAM or flash? *(Hint: `arm-none-eabi-size build/03-sine-dds/lab03_sine_dds.elf` before and after.)*
+- [ ] **Raise f_s to 40 kHz** (a 25 µs timer). Does the alias point move? What happens to the budget of CPU cycles per sample?
+
+### Checks
+- [ ] Table entries 0 / 64 / 128 / 192 print as 128 / 255 / 128 / 1
+- [ ] phase_inc = 94 489 280, actual frequency ≈ 439 999 mHz
+- [ ] Hear a clean sine; tuner shows ≈ 440.0 Hz
+- [ ] Describe square vs triangle vs sine by ear
+- [ ] Hear the sweep turn round at ~10 kHz; confirm one alias with the tuner app
+- [ ] Explain why `phase` needs no wrap-around check
+- [ ] Zero warnings in the mode you finish in
+
+### Notes
+*Date:*
+
+*Table entries printed:*
+
+*phase_inc / actual frequency printed:*
+
+*Tuner reading (part A):*
+
+*Square vs triangle vs sine, how they sounded:*
+
+*Highest frequency I could hear in the sweep:*
+
+*Aliases checked (played → heard):*
+
+| Played | Expected alias *f_s − f* | Tuner heard |
+|---|---|---|
+| | | |
+| | | |
+| | | |
 
 *Questions for next time:*
 
