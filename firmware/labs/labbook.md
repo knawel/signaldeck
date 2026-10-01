@@ -641,17 +641,20 @@ for (uint32_t hz = 100; hz <= 19000; hz += 100) {
 - [ ] Zero warnings in the mode you finish in
 
 ### Notes
-*Date:*
+*Date:* 2026-10-01
 
 *Table entries printed:*
 
 *phase_inc / actual frequency printed:*
+440 / 439999
 
 *Tuner reading (part A):*
+440
 
 *Square vs triangle vs sine, how they sounded:*
 
 *Highest frequency I could hear in the sweep:*
+5000
 
 *Aliases checked (played → heard):*
 
