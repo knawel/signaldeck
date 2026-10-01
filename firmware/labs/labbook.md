@@ -16,7 +16,7 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | 1 | 1-bit square-wave tone | ✅ done |
 | 2 | PWM DAC + RC low-pass filter | ✅ done |
 | 3 | Sine synth (lookup table + phase accumulator) | ⬜ in progress |
-| 4 | Interrupt → DMA sample feeding | ⬜ |
+| 4 | Interrupt → DMA sample feeding | ⬜ next |
 | 5 | 8-bit R-2R ladder DAC | ⬜ |
 | 6 | *(optional)* Sigma-delta output via PIO | ⬜ |
 | 7 | PCM5102A over I2S | ⬜ |
@@ -663,6 +663,257 @@ for (uint32_t hz = 100; hz <= 19000; hz += 100) {
 | | | |
 | | | |
 | | | |
+
+*Questions for next time:*
+
+---
+
+## Lab 4 — Interrupt → DMA sample feeding
+
+### Goal
+Measure what lab 3's "one interrupt per sample" really costs. Then let the **DMA** engine feed the PWM by itself, with a hardware timer setting the pace. The CPU only refills a buffer every 12.8 ms, and the audio stays clean even while the CPU is blocked.
+
+### Background
+- **What an interrupt per sample costs.** In lab 3, the timer interrupted the CPU 20 000 times a second. Each time, the CPU has to stop what it's doing, save its registers, run the SDK's timer code and your callback, schedule the next alarm, and restore everything. That's only a few microseconds, but you have just 50 µs per sample. Part A measures it: expect about **5 %** of the CPU at 20 kHz. That sounds small, but it grows with the sample rate and the number of channels. Real audio is 48 kHz stereo, and later the USB stack also needs the CPU.
+
+- **Jitter: the bigger problem.** An interrupt can arrive *late*: while another interrupt is running, or while code has turned interrupts off (flash writes and some drivers do this). When a sample reaches the DAC late, the shape of the wave is wrong, and you hear that as noise or distortion. `DISTURB 1` imitates this: every 10 ms it switches off all interrupts for 300 µs. In Part A, six samples in a row are late. You'll hear that as a buzz at 100 Hz.
+
+- **DMA (direct memory access)** is a copy engine next to the CPU, with its own access to memory. You give a DMA **channel** four things, and it copies on its own while the CPU does something else:
+
+  ```text
+  read address   → where to copy from     (our sample buffer; moves forward after each copy)
+  write address  → where to copy to       (the PWM level register; stays the same)
+  transfer count → how many copies        (BUF_LEN)
+  data size      → bytes per copy         (16 bits = one uint16_t sample)
+  ```
+  The RP2040 has 12 channels. This lab uses two.
+
+- **Pacing: DREQ and the DMA timer.** If nothing holds it back, DMA copies the whole buffer in a few microseconds, which is far too fast for audio. A **DREQ** ("data request") is a signal that tells a channel "copy one item now". The RP2040 has four **DMA pacing timers**. Each one sends DREQ ticks at a fraction **X / Y** of the system clock:
+
+  ```text
+  clk_sys × X / Y = 125 000 000 × 1 / 6250 = 20 000 ticks per second   (exactly)
+  ```
+  This ticking comes from the clock hardware, not from software. That means it never has jitter, whatever the CPU is doing.
+
+- **Where the samples go: the PWM `CC` register.** `pwm_set_gpio_level()` from lab 2 writes a value into the slice's **CC** ("counter compare") register. The DMA now writes into that same register directly, at its address `&pwm_hw->slice[slice_num].cc`. CC holds both channels of the slice: **A in bits 0–15**, **B in bits 16–31**. A 16-bit write to it is copied into both halves, so GP15 (channel B) gets the same value. That doesn't matter here, because GP15 isn't connected. Stereo will later use 32-bit writes. The PWM only picks up a new CC value at the end of its current period, so a sample never changes halfway through a PWM pulse.
+
+- **Double buffering ("ping-pong").** One buffer would have a problem: the CPU can't refill it while the DMA is reading it. So there are two buffers, and each one has its own channel. **Chaining** makes each channel start the other one in hardware the moment it finishes, so there's no gap between buffers:
+
+  ```text
+  time →        0 ms          12.8 ms        25.6 ms        38.4 ms
+  DMA plays:    [  buffer 0  ][  buffer 1  ][  buffer 0  ][  buffer 1  ] …
+  interrupt:                 ↑ "0 done"    ↑ "1 done"    ↑ "0 done"
+  CPU refills:               [buf 0]        [buf 1]       [buf 0]
+                              ↑ CPU has a whole buffer's time (12.8 ms) to do this
+  ```
+  The interrupt now happens 78 times a second instead of 20 000. In it you do two quick jobs: point the finished channel back to the start of its buffer, and tell `main()` which buffer is free.
+
+- **Underruns, and how big a buffer should be.** If the CPU is blocked for **longer than one buffer**, the chained channel starts before anyone has rewound it or refilled its buffer. It then plays old samples, or whatever memory comes after the buffer. That's an **underrun**, and you hear it as a click. Bigger buffers allow longer blocks, but they add **latency**: a change you make (a new pitch, or later new USB audio) only reaches the speaker after the buffered audio has played. These numbers were measured on the lab board with `DISTURB_US 300`:
+
+  | `BUF_LEN` | Audio per buffer | Underruns/s |
+  |---|---|---|
+  | 4 | 200 µs | ≈ 100 (every disturbance) |
+  | 8 | 400 µs | 0 |
+  | 256 | 12.8 ms | 0 |
+
+  Every audio system makes this trade-off, from USB audio to your phone. Lab 8 does it again with 1 ms USB packets.
+
+- **Measuring CPU load without a scope.** First count how many times a simple loop runs in one second while no audio is playing (`idle_loops`). Then count again with audio running. Whatever the interrupts took is missing from the count:
+
+  ```text
+  load % = 100 − loops × 100 / idle_loops
+  ```
+
+### C toolbox
+New C in this lab, plus some from labs 1–3 that was never explained. Each item says what the code does, then why we need it here.
+
+- **Fixed-width integers.** `uint8_t`, `uint16_t`, `uint32_t` and `uint64_t` (from `<stdint.h>`, which `pico/stdlib.h` includes) are **u**nsigned whole numbers of exactly 8, 16, 32 or 64 bits. `int32_t` is the signed version, so it can be negative. A plain `int` has whatever size the compiler chooses. In hardware work you want sizes you can rely on: a PWM level is 16 bits, and a phase is exactly 32 bits so that it wraps round at 2³².
+
+- **Literal suffixes.** In `1u`, the `u` makes the 1 unsigned. In `2.0f`, the `f` makes the number a `float` instead of a `double`, which is slower on the M0+.
+
+- **Shifts `<<` and `>>`.** These move the bits of a number to the left or right:
+
+  ```text
+  1u << 8      0000 0000 0001  →  0001 0000 0000   = 256 = 2⁸      (TABLE_SIZE)
+  x  << 32     multiplies by 2³²                                    (the tuning word)
+  ```
+  Shifting **right** by *n* throws away the lowest *n* bits. That's how `next_sample()` gets the table index out of the phase:
+
+  ```text
+  phase (32 bits):  [ 8-bit table index | 24-bit fractional position ]
+                       ↑
+                   phase >> 24  →  only the top 8 bits are left: a number from 0 to 255
+  ```
+  You can only shift by less than the width of the type. Shifting a 32-bit value by 32 is *undefined behaviour*, which is why `phase_inc_for()` first casts to `uint64_t`.
+
+- **Casts.** A cast like `(uint64_t)hz` or `(int32_t)x` converts a value to another type. Cast **before** the maths if the maths needs more room: `(uint64_t)loops * 100` multiplies in 64 bits. Cast **after** if you only want to change the type of the result.
+
+- **Integer division truncates.** It drops the fractional part, so `7 / 2` is 3. `clock_get_hz(clk_sys) / SAMPLE_RATE_HZ` divides exactly at 20 kHz (6250), but not at 48 kHz (see Stretch).
+
+- **`printf` format specifiers.** `%lu` prints an unsigned long, `%ld` a signed long, `%u` an unsigned int, and `%%` a literal `%`. On the RP2040's compiler, `uint32_t` *is* `unsigned long`, so `%lu` is correct. VS Code's checker sometimes complains about this because it thinks it's compiling for your Mac. The real build is what counts. The fully portable spelling is `"%" PRIu32` from `<inttypes.h>`.
+
+- **2-D arrays.** `uint16_t buffers[2][BUF_LEN]` is two rows of `BUF_LEN` samples, stored one after the other in memory. `buffers[b]` is row *b*, and `buffers[b][i]` is one sample in it.
+
+- **Pointers.** A pointer holds an **address**, which tells you where something lives in memory.
+  - `uint16_t *buf` means "`buf` is the address of a `uint16_t`".
+  - `buf[i]` is the *i*-th `uint16_t` from that address, so `fill_buffer(buffers[1])` writes into row 1. When you use an array's name, C passes the address of its first element.
+  - `&x` means "the address of x". `&c` gives a `channel_config_set_…()` function the address of your config, so it can change *your* copy rather than a copy of its own.
+  - `&pwm_hw->slice[slice_num].cc` is the address of a hardware register. On the RP2040, peripherals look like memory at fixed addresses. That's how DMA can "copy" into the PWM.
+  - `a->b` means "the field `b` of the struct that pointer `a` points to". `pwm_hw` is a pointer to the PWM block's registers.
+
+- **Structs.** A struct groups related values under one name. Lab 1's `struct note` held a pitch and a duration. `dma_channel_config` is an SDK struct holding all of a channel's settings. You change it with the setter functions, then hand it over in one go with `dma_channel_configure()`.
+
+- **`static`** has two meanings, depending on where it's written:
+  - **Outside a function** (`static uint16_t buffers…`), it makes the name private to this file.
+  - **Inside a function** (`static absolute_time_t next;` in `disturb()`), the variable keeps its value between calls instead of starting fresh each time. That's how `disturb()` remembers when it last ran.
+
+- **`volatile`, in more depth (from lab 3).** `buffer_to_fill` is written by the interrupt and read by `main()`. `volatile` makes every read really go to memory. But it doesn't make a multi-step operation safe. If you write `if (buffer_to_fill != -1) fill_buffer(buffers[buffer_to_fill]);`, that reads the variable **twice**, and the interrupt could change it in between. So `service_audio()` copies it into a local variable once and uses that copy.
+
+- **Callbacks: passing a function to a function.** `irq_set_exclusive_handler(DMA_IRQ_0, dma_handler)` passes `dma_handler` *without* `()`. That hands over the function itself, so the hardware can call it later, rather than calling it now. Lab 3's `add_repeating_timer_us(…, sample_callback, …)` did the same thing. The parameter that receives it is a **function pointer**.
+
+- **Bit masks and "write 1 to clear".** A register often packs one flag per bit. The DMA's interrupt-status register has bit *n* for channel *n*. `1u << n` builds a **mask** with only bit *n* set. The SDK's `dma_channel_acknowledge_irq0(chan)` writes `1u << chan` to that register. In this register, writing a 1 *clears* the flag and writing 0 changes nothing, so you can clear one channel's flag without touching the others.
+
+- **`#if` vs `if`.** `#if PART_B` is handled by the preprocessor *before* compiling: the code that's switched off is removed completely, as if you'd never typed it. `if (DISTURB)` is ordinary C. The compiler still checks the code, and because `DISTURB` is a constant 0 or 1, the optimiser removes the dead branch anyway. Use `#if` when the code in the other branch wouldn't even compile, or shouldn't exist at all.
+
+### Parts
+Nothing new: the lab 2 circuit stays as it is.
+
+### Tasks
+
+**4.1 Build the untouched skeleton.** Pick `04-dma-feed/lab04_dma_feed` when you click Run. Expect two `defined but not used` warnings (`service_audio`, `disturb`) until TODO 1.
+
+**4.2 Part A: what the timer interrupt costs** (`PART_B 0`)
+- TODO 1: the counting loop. TODO 2: work out and print the load.
+- Run it and write down `Idle` loops, loops with audio, and the load.
+- Set `SAMPLE_RATE_HZ` to 40000, then 48000, and write down the load each time. The pitch stays at 440 Hz. Why? Set it back to 20000.
+- `DISTURB 1`: listen. What does the 300 µs gap every 10 ms do to the sine?
+
+**4.3 Part B: DMA** (`PART_B 1`, `DISTURB 0`)
+- TODO 3: `fill_buffer()`. TODO 4: the pacing timer. TODO 5: the two channels. TODO 6: the interrupt handler. TODO 7: `service_audio()`.
+- You should hear the same sine as before. Check that the timer line prints `1/6250 of 125000000 Hz`, and note the load.
+- `DISTURB 1`: listen again. Compare with Part A. Check that underruns stay at 0.
+
+**4.4 Break it on purpose.** With `DISTURB 1`, set `BUF_LEN` to 4. Watch the underrun count and listen. Then find the smallest `BUF_LEN` with 0 underruns, and explain it using `DISTURB_US` and the sample period. Set it back to 256.
+
+### Hints (read only if stuck)
+<details><summary>TODO 1: the counting loop</summary>
+
+```c
+while (!time_reached(end)) {
+    service_audio();
+    if (DISTURB) {
+        disturb();
+    }
+    loops++;
+}
+```
+`time_reached(end)` turns true once the clock passes `end`, so `!` ("not") keeps the loop going until then.
+</details>
+
+<details><summary>TODO 2: load</summary>
+
+```c
+int32_t load = 100 - (int32_t)((uint64_t)loops * 100 / idle_loops);
+printf("loops/s %lu  load %ld %%  underruns %lu\n", loops, load, underruns);
+```
+- `loops` is about 6 million, and 6 million × 100 ≈ 0.6 billion, which fits under `uint32_t`'s 4.29 billion. A faster loop or a longer measuring window would overflow, so the 64-bit cast is a cheap safety margin.
+- The load is `int32_t` because measurement noise can make `loops` a little *bigger* than `idle_loops`, giving a slightly negative number. An unsigned type would turn −1 into 4 294 967 295.
+</details>
+
+<details><summary>TODO 3: fill_buffer</summary>
+
+```c
+for (uint32_t i = 0; i < BUF_LEN; i++) {
+    buf[i] = next_sample();
+}
+```
+</details>
+
+<details><summary>TODO 4: pacing timer</summary>
+
+```c
+int timer = dma_claim_unused_timer(true);
+uint32_t denom = clock_get_hz(clk_sys) / SAMPLE_RATE_HZ;
+dma_timer_set_fraction(timer, 1, denom);
+printf("DMA timer: 1/%lu of %lu Hz\n", denom, clock_get_hz(clk_sys));
+```
+`true` means "I need one; stop with an error if none is free". Working the fraction out from `clock_get_hz()`, rather than writing 6250, keeps it correct if the clock ever changes.
+</details>
+
+<details><summary>TODO 5: the two channels</summary>
+
+```c
+channel_config_set_dreq(&c, dma_get_timer_dreq(timer));
+channel_config_set_chain_to(&c, dma_chan[1 - b]);
+dma_channel_configure(dma_chan[b], &c,
+                      &pwm_hw->slice[slice_num].cc,     // write here
+                      buffers[b],                       // read from here
+                      BUF_LEN, false);                  // this many, don't start yet
+dma_channel_set_irq0_enabled(dma_chan[b], true);
+```
+`1 - b` is the *other* channel: 1 when b is 0, and 0 when b is 1.
+</details>
+
+<details><summary>TODO 6: the interrupt handler</summary>
+
+```c
+dma_channel_acknowledge_irq0(dma_chan[b]);
+dma_channel_set_read_addr(dma_chan[b], buffers[b], false);
+if (buffer_to_fill != -1) {
+    underruns++;
+}
+buffer_to_fill = b;
+```
+- `false` means "set the address but don't start". The *other* channel's chaining starts this one later.
+- The transfer count needs no reset: each time a channel starts, it reloads the count you configured.
+- If you forget to acknowledge, the interrupt stays active and the handler runs again and again forever, so `main()` never runs.
+</details>
+
+<details><summary>TODO 7: service_audio</summary>
+
+```c
+int b = buffer_to_fill;     // read the volatile variable exactly once
+if (b != -1) {
+    fill_buffer(buffers[b]);
+    buffer_to_fill = -1;
+}
+```
+</details>
+
+### Stretch challenges
+- [ ] **Exact 48 kHz:** at 48 kHz, `125 000 000 / 48 000` = 2604.17, so the integer division gives a slightly wrong rate. Which rate exactly? Find X / Y with both under 65 536 so that 125 000 000 × X / Y = 48 000 exactly. *(Hint: reduce 48 000 / 125 000 000 as a fraction.)*
+- [ ] **Hear the latency:** play lab 3's melody in Part B by changing `phase_inc` from `main()`. With `BUF_LEN` 4096 (about 0.2 s per buffer), can you hear the notes start late? Why can the delay be up to *two* buffers long?
+- [ ] **Stereo preview:** make the buffers `uint32_t`, use `DMA_SIZE_32`, and store `left | ((uint32_t)right << 16)`. Play 440 Hz on A (GP14) and 660 Hz on B (GP15). You'll need GP15 set up for PWM, and a second filter if you want to listen to it.
+- [ ] **Refill inside the interrupt:** call `fill_buffer()` from `dma_handler()` instead of `main()`. What's good about it? What happens to the other interrupts while it runs?
+
+### Checks
+- [ ] Part A load printed: about 5 % at 20 kHz; also written down at 40 kHz and 48 kHz
+- [ ] Part A with `DISTURB 1`: heard the disturbance
+- [ ] Part B plays the same clean sine; timer prints `1/6250 of 125000000 Hz`
+- [ ] Part B load about 1 %
+- [ ] Part B with `DISTURB 1` and `BUF_LEN 256`: clean sound, 0 underruns
+- [ ] Found the smallest `BUF_LEN` with 0 underruns, and explained why
+- [ ] Explain why `buffer_to_fill` is `volatile` *and* why `service_audio()` reads it only once
+- [ ] Zero warnings in the mode you finish in
+
+### Notes
+*Date:*
+
+*Part A (timer):* idle loops / loops with audio / load %:
+
+| Sample rate | Load % |
+|---|---|
+| 20 kHz | |
+| 40 kHz | |
+| 48 kHz | |
+
+*Part A with DISTURB, how it sounded:*
+
+*Part B (DMA):* timer line printed / load %:
+
+*Part B with DISTURB, how it sounded / underruns:*
+
+*Smallest BUF_LEN with 0 underruns, and why:*
 
 *Questions for next time:*
 
