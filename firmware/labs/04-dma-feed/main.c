@@ -132,15 +132,13 @@ static void start_dma_audio(void) {
         //         (c) configure it: write to &pwm_hw->slice[slice_num].cc, read from buffers[b],
         //             BUF_LEN transfers, don't start yet,
         //         (d) enable its completion interrupt on DMA_IRQ_0.
-        dma_channel_acknowledge_irq0(dma_chan[b]);
-        dma_channel_set_read_addr(dma_chan[b], buffers[b], false);
-        if (buffer_to_fill != -1) {
-            underruns++;
-        }
-        buffer_to_fill = b;
-
-        (void)c;
-        (void)timer;
+        channel_config_set_dreq(&c, dma_get_timer_dreq(timer));
+        channel_config_set_chain_to(&c, dma_chan[1 - b]);
+        dma_channel_configure(dma_chan[b], &c,
+                            &pwm_hw->slice[slice_num].cc,     // write here
+                            buffers[b],                       // read from here
+                            BUF_LEN, false);                  // this many, don't start yet
+        dma_channel_set_irq0_enabled(dma_chan[b], true);
     }
 
     irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
@@ -153,6 +151,11 @@ static void start_dma_audio(void) {
 
 static void service_audio(void) {
     // TODO 7: if buffer_to_fill isn't −1, fill that buffer, then set buffer_to_fill back to −1.
+    int b = buffer_to_fill;     // read the volatile variable exactly once
+    if (b != -1) {
+        fill_buffer(buffers[b]);
+        buffer_to_fill = -1;
+}
 }
 #endif
 

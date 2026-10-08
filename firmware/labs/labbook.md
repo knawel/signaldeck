@@ -911,8 +911,10 @@ if (b != -1) {
 interrupted
 
 *Part B (DMA):* timer line printed / load %:
+1%
 
 *Part B with DISTURB, how it sounded / underruns:*
+
 
 *Smallest BUF_LEN with 0 underruns, and why:*
 
