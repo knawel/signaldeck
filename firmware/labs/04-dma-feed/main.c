@@ -28,10 +28,10 @@
 
 // Part A: 0 = lab 3's timer interrupt, one sample per interrupt
 // Part B: 1 = DMA paced by a hardware timer, two buffers taking turns
-#define PART_B          0
+#define PART_B          1
 
 // 1 = block all interrupts for DISTURB_US every 10 ms, like a busy driver would
-#define DISTURB         0
+#define DISTURB         1
 #define DISTURB_US      300
 
 // --- the sine synth from lab 3 (your TODOs 1–3, finished) ---
@@ -83,7 +83,11 @@ static volatile int buffer_to_fill = -1;    // set by the DMA interrupt; -1 = no
 // Write the next BUF_LEN samples into buf.
 static void fill_buffer(uint16_t *buf) {
     // TODO 3: loop i = 0 … BUF_LEN − 1 and store next_sample() in buf[i].
-    (void)buf;
+    uint32_t i = 0;
+    while (i < BUF_LEN) {
+        buf[i] = next_sample();
+        i++;
+    }
 }
 
 // Runs when a DMA channel has played its whole buffer (and has already chained to the other one).
@@ -94,6 +98,12 @@ static void dma_handler(void) {
             //         (b) point the channel's read address back at buffers[b], without starting it,
             //         (c) if buffer_to_fill isn't −1, main() missed the last one: count an underrun,
             //         (d) set buffer_to_fill = b so main() refills it.
+            dma_channel_acknowledge_irq0(dma_chan[b]);
+            dma_channel_set_read_addr(dma_chan[b], buffers[b], false);
+            if (buffer_to_fill != -1) {
+                underruns++;
+            }
+            buffer_to_fill = b;
         }
     }
 }
@@ -101,7 +111,12 @@ static void dma_handler(void) {
 static void start_dma_audio(void) {
     // TODO 4: claim a DMA pacing timer and set its fraction to 1 / (clk_sys / SAMPLE_RATE_HZ).
     //         Print the denominator and clock_get_hz(clk_sys).
-    int timer = 0;      // replace the 0 with the timer you claimed
+    int timer = dma_claim_unused_timer(true);
+    uint32_t denom = clock_get_hz(clk_sys) / SAMPLE_RATE_HZ;
+    dma_timer_set_fraction(timer, 1, denom);
+    printf("DMA timer: 1/%lu of %lu Hz\n", denom, clock_get_hz(clk_sys));
+
+
 
     dma_chan[0] = dma_claim_unused_channel(true);
     dma_chan[1] = dma_claim_unused_channel(true);
@@ -117,6 +132,13 @@ static void start_dma_audio(void) {
         //         (c) configure it: write to &pwm_hw->slice[slice_num].cc, read from buffers[b],
         //             BUF_LEN transfers, don't start yet,
         //         (d) enable its completion interrupt on DMA_IRQ_0.
+        dma_channel_acknowledge_irq0(dma_chan[b]);
+        dma_channel_set_read_addr(dma_chan[b], buffers[b], false);
+        if (buffer_to_fill != -1) {
+            underruns++;
+        }
+        buffer_to_fill = b;
+
         (void)c;
         (void)timer;
     }
@@ -151,6 +173,11 @@ static uint32_t count_loops_1s(void) {
     absolute_time_t end = make_timeout_time_ms(1000);
     // TODO 1: until `end` is reached: call service_audio(), call disturb() if DISTURB is 1,
     //         and count one loop.
+    while (!time_reached(end)) {
+        service_audio();
+        if (DISTURB) disturb();
+        loops++;
+    }
     (void)end;
     return loops;
 }
@@ -183,6 +210,9 @@ int main(void) {
 
         // TODO 2: load in % = 100 − loops × 100 / idle_loops. Print loops, load and underruns.
         //         Does loops × 100 still fit in a uint32_t? Can the load come out negative?
+        uint32_t load;
+        load = 100 - loops * 100 / idle_loops;
+        printf("Loops: %lu, Load: %lu%%\n", loops, load);
         (void)loops;
     }
 }

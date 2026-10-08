@@ -887,7 +887,7 @@ if (b != -1) {
 - [ ] **Refill inside the interrupt:** call `fill_buffer()` from `dma_handler()` instead of `main()`. What's good about it? What happens to the other interrupts while it runs?
 
 ### Checks
-- [ ] Part A load printed: about 5 % at 20 kHz; also written down at 40 kHz and 48 kHz
+- [x] Part A load printed: about 5 % at 20 kHz; also written down at 40 kHz and 48 kHz
 - [ ] Part A with `DISTURB 1`: heard the disturbance
 - [ ] Part B plays the same clean sine; timer prints `1/6250 of 125000000 Hz`
 - [ ] Part B load about 1 %
@@ -903,11 +903,12 @@ if (b != -1) {
 
 | Sample rate | Load % |
 |---|---|
-| 20 kHz | |
-| 40 kHz | |
-| 48 kHz | |
+| 20 kHz |5% |
+| 40 kHz |10% |
+| 48 kHz |13% |
 
 *Part A with DISTURB, how it sounded:*
+interrupted
 
 *Part B (DMA):* timer line printed / load %:
 
