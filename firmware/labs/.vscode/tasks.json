@@ -106,8 +106,8 @@
             "id": "lab",
             "type": "pickString",
             "description": "Which lab to flash?",
-            "options": ["00-hello/lab00_hello", "01-square-tone/lab01_square_tone", "02-pwm-dac/lab02_pwm_dac", "03-sine-dds/lab03_sine_dds", "04-dma-feed/lab04_dma_feed"],
-            "default": "04-dma-feed/lab04_dma_feed"
+            "options": ["00-hello/lab00_hello", "01-square-tone/lab01_square_tone", "02-pwm-dac/lab02_pwm_dac", "03-sine-dds/lab03_sine_dds", "04-dma-feed/lab04_dma_feed", "05-r2r-ladder/lab05_r2r_ladder"],
+            "default": "05-r2r-ladder/lab05_r2r_ladder"
         }
     ]
 }

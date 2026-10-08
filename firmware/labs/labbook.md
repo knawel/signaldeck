@@ -15,10 +15,10 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | 0 | Toolchain, hello, blink | ✅ done |
 | 1 | 1-bit square-wave tone | ✅ done |
 | 2 | PWM DAC + RC low-pass filter | ✅ done |
-| 3 | Sine synth (lookup table + phase accumulator) | ⬜ in progress |
-| 4 | Interrupt → DMA sample feeding | ⬜ next |
-| 5 | 8-bit R-2R ladder DAC | ⬜ |
-| 6 | *(optional)* Sigma-delta output via PIO | ⬜ |
+| 3 | Sine synth (lookup table + phase accumulator) | ✅ done |
+| 4 | Interrupt → DMA sample feeding | ✅ done |
+| 5 | 8-bit R-2R ladder DAC | ⬜ in progress |
+| 6 | *(optional)* Sigma-delta output via PIO | ⬜ next |
 | 7 | PCM5102A over I2S | ⬜ |
 | 8 | USB audio → PCM5102A (main firmware) | ⬜ |
 
@@ -917,6 +917,275 @@ interrupted
 
 
 *Smallest BUF_LEN with 0 underruns, and why:*
+
+*Questions for next time:*
+
+---
+
+## Lab 5 — 8-bit R-2R ladder DAC
+
+### Goal
+Build a DAC that works in a completely different way from PWM. There's no carrier and no averaging: **8 pins set 8 bits at the same moment**, and a ladder of resistors adds them up into one voltage. You'll measure all 256 steps with the ADC to find out how straight the staircase really is. Then you'll play lab 3's sine through it, and break it by writing the bits one at a time.
+
+### Background
+- **Two ways to make a voltage from a number.**
+  - **Lab 2's PWM** uses *time*: one pin is high for *code*/256 of each period, and a filter averages it.
+  - **The R-2R ladder** uses *resistor ratios*: each bit gets its own pin, and resistors give each pin a different weight. Bit 7 counts for half of full scale, bit 6 for a quarter, and so on down to bit 0 at 1/256. The output is
+  
+    ```text
+    V_out = 3.3 V × code / 256          one step (1 LSB) = 3.3 V / 256 ≈ 12.9 mV
+    ```
+    It's the same formula as PWM, but the value appears **as soon as the pins change**. There's no carrier to filter out.
+
+- **Why "R-2R".** The obvious way to weight 8 bits is 8 resistors of R, 2R, 4R … 128R. That needs a 1.28 MΩ resistor matched precisely to a 10 kΩ one, which isn't realistic. The ladder gets the same weights from **only two values**, R and 2R:
+
+  ```text
+  GND ─[2R]─┬─[R]─┬─[R]─┬─ … ─┬─[R]─┬── OUT
+            │     │     │     │     │
+           [2R]  [2R]  [2R]  [2R]  [2R]
+            │     │     │     │     │
+           GP0   GP1   GP2   GP6   GP7
+          (LSB)                   (MSB)
+  ```
+  - **The trick:** stand on any node and look left, towards the LSB end. You always see a resistance of exactly **R**. At GP0's node it's 2R ∥ 2R = R (two equal resistors in parallel give half). Add the series R and you get 2R, so the next node is 2R ∥ 2R = R again, and so on all the way up.
+  - **What that does:** a voltage that enters at one node gets **halved** each time it passes through a section on its way to OUT. Take bit 7 on its own: GP7 drives 3.3 V through 2R into a ladder that looks like 2R to ground. That's a divider of two equal resistors, so OUT = 1.65 V, half of full scale. Bit 6 enters one section further away and gets halved once more: ¼. Bit 0 gets halved 8 times: 1/256.
+  - **Superposition.** A linear circuit lets you work out each bit's effect alone and add them up. A low pin is ~0 V, so it just acts as a path to ground. That's why the output is a weighted sum of bits, which is exactly binary place value:
+
+    ```text
+    code 200 = 1100 1000 = 128 + 64 + 8    →   V_out = 3.3 × 200 / 256 ≈ 2.58 V
+    ```
+  - **Output resistance.** Looking back into OUT, you see GP7's 2R in parallel with the 2R of the ladder below it, so the output looks like a **voltage source with R in series**, whatever the code is. With R = 10 kΩ, that's 10 kΩ.
+
+- **Accuracy comes from resistor matching.** The MSB is worth 128 steps. For the step from 127 (`0111 1111`) to 128 (`1000 0000`) to be one step tall, the MSB's weight has to match the sum of all the other bits to within a fraction of a step, which means about **0.4 %**. A 1 % resistor in the MSB leg moves the MSB's weight by about 0.5 %, which is ~0.6 steps. Several 1 % errors can stack up into a whole step. This 127 → 128 step is the **major carry**, where every bit changes at once, and it's where ladder DACs usually go wrong.
+  - Two numbers describe how good the staircase is, both measured in steps (LSB):
+    - **DNL** (differential non-linearity): how far each step is from 1 step tall. DNL = +0.3 means that step is 1.3 steps tall. **DNL below −1** means the step goes *down*: the DAC is **non-monotonic**, so a higher code gives a lower voltage. For audio, that's audible distortion.
+    - **INL** (integral non-linearity): how far each point is from a straight line through the end points. It's all the DNL errors added up.
+  - For 16 bits, you'd need matching to 0.0015 %, which takes laser-trimmed resistors. That's why almost every modern audio DAC, the PCM5102A included, has given up on ladders and uses **sigma-delta** conversion (lab 6 has a taste of it) together with high oversampling.
+
+- **The pins are the reference.** The "1" level on each pin is the chip's 3.3 V rail, so noise on the rail goes straight into the audio. Each pin also has a few tens of ohms of output resistance, which adds to its 2R leg. Against 20 kΩ that's only 0.1–0.3 %. With R = 1 kΩ it would be 10 times worse. That's one reason this lab uses 10 kΩ / 20 kΩ.
+
+- **Ratiometric measurement.** On the RP2040-Zero, the ADC's reference and the GPIO "1" level both come from the same 3.3 V regulator. If the rail is 3.28 V instead of 3.30 V, the DAC output and the ADC's scale move together. So you compare **ADC counts** with **DAC codes** and never need to know the exact rail voltage. Ideally, one DAC step is 4096 / 256 = **16 ADC counts**.
+  - **Watch out for the meter:** the RP2040's own ADC has some unevenly sized steps around codes **512, 1536, 2560 and 3584** (see the ADC section of the RP2040 datasheet). Those are DAC codes **32, 96, 160 and 224**. If your worst DNL lands at one of those codes, it's probably the ADC, not your ladder. Always ask "is it my circuit or my instrument?"
+
+- **Writing all 8 bits at once.** The pins must change **together**. If they don't, the major carry passes through wrong values on the way. Going from 127 to 128 with the low bits cleared first, the output visits 126, 124, 120 … 0 before the MSB arrives. That's a near-full-scale spike, and it's called a **glitch**. On the RP2040, all GPIO outputs live in one 32-bit register in the **SIO** (single-cycle I/O) block. `gpio_put_masked()` changes your 8 bits with **one write** to that register, so they all switch in the same clock cycle. Task 5.4 shows what happens when you don't.
+
+- **Why not DMA, like lab 4?** The SIO is wired straight to the CPU cores, so the **DMA can't reach it**. Part B goes back to lab 3's timer interrupt, which you measured at about 5 % CPU in lab 4. The proper fix is **PIO**: a small programmable state machine that *can* drive pins and that DMA *can* feed. Lab 6 introduces it, and lab 7's I2S depends on it.
+
+| | PWM (lab 2) | R-2R ladder (this lab) | PCM5102A (lab 7) |
+|---|---|---|---|
+| Pins | 1 | 8 | 3 (I2S) |
+| Levels set by | timing (clock counts) | resistor ratios | timing again (sigma-delta) |
+| Accuracy limited by | ripple, clock | resistor matching | very little at our level |
+| Needs a filter for | 488 kHz carrier | only the images at *f_s ± f* | built in |
+| Output resistance | ~1 kΩ + filter | R = 10 kΩ | low (line driver) |
+
+### C toolbox
+New C in this lab. For fixed-width types, shifts, casts, `static` and `volatile`, see lab 4's toolbox.
+
+- **`(void)x;`** The skeletons use this to say "I know `x` isn't used yet". It turns the value into nothing, which silences the `unused` warning. Delete it once your TODO uses the variable.
+
+- **Hex literals.** `0xFF` is 255 written in base 16. Each hex digit is exactly 4 bits, so hex lets you read bit patterns at a glance:
+
+  ```text
+  0x0F = 0000 1111      0xF0 = 1111 0000      0xFF = 1111 1111      0x80 = 1000 0000 (bit 7)
+  ```
+  `printf("%08lx", x)` prints a `uint32_t` in hex, padded to 8 digits with zeros. The program prints `DAC_MASK` like this at startup.
+
+- **Bitwise operators work on each bit separately.** Don't mix them up with the logical ones (`&&`, `||`, `!`), which treat a whole number as true or false.
+
+  ```text
+  a & b   AND: 1 only where both are 1         1100 & 1010 = 1000     keep some bits
+  a | b   OR:  1 where either is 1             1100 | 1010 = 1110     set some bits
+  a ^ b   XOR: 1 where they differ             1100 ^ 1010 = 0110     flip some bits
+  ~a      NOT: every bit flipped               ~1100      = 0011
+  ```
+  **Reading bit *k*:** `(code >> k) & 1u` shifts bit *k* down to position 0, then `& 1u` throws away everything else. The result is 0 or 1. TODO 6 uses this.
+
+- **Masks.** `DAC_MASK` is `0xFF << DAC_BASE_PIN`: a 1 for each ladder pin and 0 for every other pin. The `_masked` GPIO functions only touch pins whose mask bit is 1, so your code can't disturb GP8 and up. Inside, `gpio_put_masked(mask, value)` is a single line:
+
+  ```c
+  sio_hw->gpio_togl = (sio_hw->gpio_out ^ value) & mask;
+  ```
+  `gpio_out ^ value` marks every pin that's *different* from what you want. `& mask` keeps only the ladder pins. Writing that to the **toggle** register flips exactly those pins, all in one write. Example with 4 pins: the outputs are `0111`, you want `1000`, so `0111 ^ 1000 = 1111` and all four toggle together.
+
+- **Integer promotion.** Before arithmetic, C widens small types like `uint8_t` to `int`. So `code << 3` is calculated as an `int`, not a `uint8_t`. Writing `(uint32_t)code << DAC_BASE_PIN` makes the type you want visible and keeps it unsigned, which matches the `uint32_t` that `gpio_put_masked()` expects.
+
+- **The `uint8_t` loop trap.** `for (uint8_t c = 0; c < 256; c++)` **never ends**. A `uint8_t` can't reach 256: after 255 it wraps round to 0, which is the same unsigned wrap-around as lab 3's phase, but unwanted this time. `-Wextra` catches it: *"comparison is always true due to limited range of data type"*. That's why the sweep counts with `uint32_t c` and only the *value* passed to `dac_write()` is a `uint8_t`.
+
+- **`float` for measurements.** An averaged ADC reading like 2047.37 has a useful fractional part, and DNL can be negative, so `measured[]` holds `float`s. (Unsigned subtraction would turn a −0.5 step into about 4 billion.) `fabsf()` is the absolute value for `float`, from `<math.h>`. `%.2f` prints 2 decimals, and `%+.2f` always shows the sign. When you write `c * step` with `uint32_t c` and `float step`, C converts `c` to `float` first.
+
+- **Big arrays belong outside functions.** `measured[256]` is 256 × 4 bytes = 1 KB. Local variables live on the **stack**, and the SDK gives `main()` only 2 KB of stack (`PICO_STACK_SIZE`, 0x800). A 1 KB local array would use half of it. A `static` array outside the function sits in ordinary RAM (the RP2040 has 264 KB) and is set to zero at startup.
+
+- **The conditional operator `?:`.** `monotonic ? "monotonic" : "NOT monotonic"` is a compact if/else that produces a *value*: the first one if the condition is true, the second if it's false. You saw it in lab 2's triangle hint.
+
+### Parts
+- **25 × 10 kΩ, 1 % metal-film**, all from **one strip or bag**. Resistors made in the same batch usually match each other much better than their 1 % rating. You make 2R from two 10 kΩ in series, so R and 2R come from the same batch.
+  - Or: 7 × 10 kΩ + 9 × 20 kΩ, 1 %. That's fewer parts, but R and 2R come from different batches.
+- Jumper wires
+- Everything from lab 2 (47 µF, jack, earbuds, multimeter)
+- *(Optional)* 2.2 nF ceramic capacitor (marked "222"), for a stretch challenge
+
+### Wiring (zone C)
+You need 9 × 2R (8 bit legs + 1 termination) and 7 × R (between the nodes).
+
+```text
+                  2R = 20 kΩ (or 2 × 10 kΩ in series)
+   GP0 (LSB) ───[ 2R ]───── N0 ────[ 2R ]──── GND rail      ← termination
+                             │
+                           [ R ] 10 kΩ
+                             │
+   GP1 ─────────[ 2R ]───── N1
+                             │
+                           [ R ]
+                             │
+   GP2 ─────────[ 2R ]───── N2
+                             ┆      same pattern for GP3 … GP6 (N3 … N6)
+                           [ R ]
+                             │
+   GP7 (MSB) ───[ 2R ]───── N7 = OUT ──┬──────────────── GP27 (ADC1)
+                                       │      47 µF
+                                       └───(+)┤├(−)───── jack TIP + RING
+                                               (moved over from lab 2's FILT)
+```
+
+- Run one short jumper from each of GP0–GP7 (right-hand header, one after another) across to zone C. Give each node N0–N7 its own breadboard column, and run the R chain down from one node column to the next.
+- If you make each 2R from two 10 kΩ resistors, the point where they join needs its own free column. **Nothing else may touch it.**
+- **Double-check the end resistors.** The termination 2R at N0 goes to **GND**, not to a pin. N7 has no R going further up: it *is* OUT.
+- GP26 can stay wired to lab 2's FILT, which makes GP27 the ladder's ADC input. Leave GP14's filter in place. It's silent, because this lab doesn't drive GP14.
+- **For Part A, unplug the earbuds.** Through the earbuds, the 47 µF on OUT charges through the 10 kΩ ladder with τ = 10 kΩ × 47 µF ≈ 0.5 s, so every measurement would drift (the same effect as the lab 2.2 question).
+- Each pin drives at most ~0.1 mA into the ladder, so there's no risk to the GPIOs.
+- The labs use USB for `printf`, not UART, so GP0 and GP1 are free even though they're UART0's default pins.
+
+### Tasks
+
+**5.1 Build the untouched skeleton.** Pick `05-r2r-ladder/lab05_r2r_ladder` when you click Run. Part A builds with zero warnings. Part B shows `'phase' defined but not used` and `'dac_write' defined but not used` until TODO 5.
+
+**5.2 Build the ladder, then Part A: measure it** (`PART_B 0`, earbuds unplugged)
+- TODO 1: the 8 output pins. TODO 2: `dac_write()`.
+- While the program holds code 128, measure OUT with the multimeter. Do you get ≈ 1.65 V? Also try `dac_write(255)` and `dac_write(1)` by hand. What should one step measure?
+- TODO 3: bit weights. Each bit should measure close to 1, 2, 4 … 128 steps. Copy them into Notes. Are the low bits noisy? Are the high bits off by more than a fraction of a step?
+- TODO 4: DNL, INL and monotonic. Where is the worst DNL? At 128 (the major carry), at 64 or 192 (the next biggest carries), or at 32 / 96 / 160 / 224 (the ADC's known steps)?
+- Let it run a few rounds. How much do the numbers change between runs? That's your measurement noise. Any result smaller than it means nothing.
+
+**5.3 Part B: sine through the ladder** (`PART_B 1`)
+- TODO 5: the callback.
+- **Move the 47 µF's (+) leg from FILT to OUT** and plug the earbuds back in. It will be about **10 times quieter** than lab 3: 10 kΩ into a 32 Ω earbud gives only ~10 mV peak-to-peak. If you use a powered speaker's line input instead (≈ 10 kΩ), it will be *loud*, so start with the speaker turned down.
+- Compare with lab 3's PWM sine. Is it cleaner? Is there any hiss or whine left? (There's no 488 kHz carrier now, but the 20 kHz images are still there.)
+- Tuner app: still 440 Hz?
+
+**5.4 Break it on purpose: one bit at a time** (`WRITE_SLOW 1`), TODO 6
+- First run Part A with `WRITE_SLOW 1`. Do the DNL/INL results change? Why not? *(Hint: when is the ADC reading taken?)*
+- Then run Part B with `WRITE_SLOW 1` and listen. Work out on paper which codes the output passes through when going from 127 to 128, and from 128 to 127, with bits written LSB first.
+- Try `BIT_DELAY_US 0`. The bits are still written one at a time, just a few nanoseconds apart. Can you still hear it? A scope would still see the glitch.
+- Set `WRITE_SLOW` back to 0.
+
+### Hints (read only if stuck)
+<details><summary>TODO 1: 8 outputs at once</summary>
+
+```c
+gpio_init_mask(DAC_MASK);
+gpio_set_dir_out_masked(DAC_MASK);
+```
+That's lab 0's `gpio_init()` + `gpio_set_dir()`, for every pin whose bit in the mask is 1. Work out the startup print by hand first: what is `DAC_MASK` in hex?
+</details>
+
+<details><summary>TODO 2: dac_write, all at once</summary>
+
+```c
+gpio_put_masked(DAC_MASK, (uint32_t)code << DAC_BASE_PIN);
+```
+With `DAC_BASE_PIN` 0 the shift does nothing. It's there so the code still works if you ever move the ladder to GP8–GP15.
+</details>
+
+<details><summary>TODO 3: bit weights</summary>
+
+```c
+float weight = (measure_code(1u << k) - zero) / ADC_PER_STEP;
+printf("%3lu  %5lu  %8.2f\n", k, 1ul << k, weight);
+```
+`1u << k` is passed to a `uint8_t` parameter. That's fine, because it's at most 128. `%3lu` pads to 3 characters so the columns line up. `1ul` is an `unsigned long`, which matches `%lu`.
+</details>
+
+<details><summary>TODO 4: DNL, INL, monotonic</summary>
+
+```c
+float dnl = (measured[c] - measured[c - 1]) / step - 1.0f;
+float inl = (measured[c] - (measured[0] + c * step)) / step;
+if (fabsf(dnl) > fabsf(worst_dnl)) { worst_dnl = dnl; worst_dnl_code = c; }
+if (fabsf(inl) > fabsf(worst_inl)) { worst_inl = inl; worst_inl_code = c; }
+if (measured[c] <= measured[c - 1]) monotonic = false;
+```
+- `worst_dnl` keeps its sign, so you can tell whether the worst step was too tall (+) or too short (−). Only the *comparison* uses `fabsf`.
+- `step` is the *measured* average step, not the ideal 16. That way an ADC gain error or a slightly low rail doesn't show up as INL.
+</details>
+
+<details><summary>TODO 5: the callback</summary>
+
+```c
+phase += phase_inc;
+dac_write(sine_table[phase >> (32 - TABLE_BITS)]);
+```
+It's lab 3's callback with `pwm_set_gpio_level()` swapped for `dac_write()`. The table already holds 0–255 values: the same `128 ± 127` as lab 3, now stored as `uint8_t`.
+</details>
+
+<details><summary>TODO 6: one bit at a time</summary>
+
+```c
+for (uint32_t k = 0; k < DAC_BITS; k++) {
+    gpio_put(DAC_BASE_PIN + k, (code >> k) & 1u);
+    busy_wait_us(BIT_DELAY_US);
+}
+```
+`busy_wait_us()` instead of `sleep_us()`: this runs inside the timer interrupt in Part B, and an interrupt must never sleep. `busy_wait_us()` just spins the CPU.
+</details>
+
+### Stretch challenges
+- [ ] **Plot the staircase:** set `PRINT_CSV 1`, copy the `code,adc` lines into a spreadsheet, and plot ADC counts against code. Add a column with each step (`adc[c] − adc[c−1]`) and plot that as well. The DNL spikes stand out right away.
+- [ ] **Sort your resistors:** measure all your 10 kΩ resistors with the multimeter. Put the best-matched pair in GP7's 2R leg and the termination, then measure the 127 → 128 DNL again. Did it improve?
+- [ ] **Swap two bits:** move the GP6 and GP7 wires to each other's legs. Predict the bit weights before you measure them.
+- [ ] **4-bit DAC in software:** in the callback, write `sine_table[…] & 0xF0`. That keeps only the top 4 bits: 16 levels. What do you hear? That's quantization noise again (lab 2's `AMPLITUDE` stretch), this time made with a bit mask.
+- [ ] **48 kHz:** set `SAMPLE_RATE_HZ` to 48000. The ladder has no carrier to worry about. What does the higher rate do to the images, and to the CPU load (see lab 4)?
+- [ ] **Reconstruction filter:** with a line input instead of earbuds, put 2.2 nF from OUT to GND. The ladder's own 10 kΩ output resistance becomes the filter's R: *f_c* = 1 / (2π · 10 kΩ · 2.2 nF) ≈ 7.2 kHz. Why does this filter do nothing when 32 Ω earbuds are connected?
+- [ ] **Why can't DMA write the pins?** Find the SIO section of the RP2040 datasheet and read what's connected to it. Then look up `out pins` in the PIO chapter. That's lab 6.
+
+### Checks
+- [ ] Startup prints mask `0x000000ff`
+- [ ] Multimeter: code 128 ≈ 1.65 V (half your rail)
+- [ ] Bit weights printed and written down. MSB within about 1 step of 128.
+- [ ] Worst DNL / INL printed, and explained whether the worst code is the ladder (major carry) or the ADC (32 / 96 / 160 / 224)
+- [ ] Ladder is monotonic, or I found the resistor that makes it non-monotonic
+- [ ] Hear a sine through the ladder in Part B; tuner ≈ 440 Hz
+- [ ] Heard what `WRITE_SLOW 1` does, and explained why Part A couldn't see it
+- [ ] Explain why `gpio_put_masked()` changes all 8 pins at the same moment
+- [ ] Zero warnings in the mode you finish in
+
+### Notes
+*Date:*
+
+*Resistors used (values, tolerance, one batch?):*
+
+*Multimeter at code 128 / 255 / 1:*
+
+*Bit weights (DAC steps):*
+
+| Bit | Ideal | Measured |
+|---|---|---|
+| 0 | 1 | |
+| 1 | 2 | |
+| 2 | 4 | |
+| 3 | 8 | |
+| 4 | 16 | |
+| 5 | 32 | |
+| 6 | 64 | |
+| 7 | 128 | |
+
+*Worst DNL (code) / worst INL (code) / monotonic? How much they vary between runs:*
+
+*Is the worst DNL the ladder or the ADC? How I decided:*
+
+*Ladder sine vs PWM sine, how they sounded:*
+
+*WRITE_SLOW: what I heard, and the codes passed through on 127 → 128:*
 
 *Questions for next time:*
 
