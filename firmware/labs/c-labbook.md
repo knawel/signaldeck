@@ -10,9 +10,9 @@ Do C1 and C2 now. C3 is worth doing before lab 6, because PIO code is mostly `pi
 
 | # | Lab | Status |
 |---|---|---|
-| C1 | Bits, masks and register fields | ⬜ next |
-| C2 | GPIO from raw registers | ⬜ |
-| C3 | Register structs, `volatile` and the disassembly (before lab 6) | ⬜ |
+| C1 | Bits, masks and register fields | ✅ done |
+| C2 | GPIO from raw registers | ✅ done |
+| C3 | Register structs, `volatile` and the disassembly (before lab 6) | ⬜ next |
 
 "Lab N" without a C (lab 4's toolbox, lab 0's LED …) means a lab in the [main labbook](labbook.md). Same rules as there: replace the `TODO`s yourself, use the hints only when stuck, fill in **Notes**, and a lab is done when every **Checks** box is ticked.
 
@@ -286,7 +286,7 @@ CHIP_ID has no fixed reset value because it's different on each silicon revision
 ## Lab C2 — GPIO from raw registers
 
 ### Goal
-Find every address, offset and bit number for a GPIO pin in the datasheet: 28 numbers in all. Then blink lab 0's LED and read a button using only those numbers and your C1 bit operations: no `gpio_init()`, `gpio_put()` or `gpio_get()`. Afterwards you'll know what those functions really do, and how to find any register on the chip yourself.
+Find every address, offset and bit number for a GPIO pin in the datasheet: 28 numbers in all. Then blink lab 0's LED and read a tactile button using only those numbers and your C1 bit operations: no `gpio_init()`, `gpio_put()` or `gpio_get()`. Afterwards you'll know what those functions really do, and how to find any register on the chip yourself.
 
 ### Background
 - **A GPIO pin is controlled by three register blocks.** `gpio_init()` + `gpio_set_dir()` + `gpio_put()` from lab 0 hide all three:
@@ -309,6 +309,17 @@ Find every address, offset and bit number for a GPIO pin in the datasheet: 28 nu
   It's the same calculation as the PWM `CC` example in [Reading the datasheet](#reading-the-datasheet). Look at the list of IO_BANK0 registers to see why the CTRL stride isn't 4: something sits between one pin's CTRL and the next.
 
 - **The pad register.** One register per pin, holding the pin's electrical settings: output disable (OD), input enable (IE), drive strength, pull-up (PUE), pull-down (PDE), Schmitt trigger and slew rate. Its **Reset** column tells you how every pin starts. Decoding it is task C2.1's last step. The answer tells you whether the button needs TODO 5.
+
+- **The tactile switch.** A standard 6×6 mm tactile switch has **4 legs but only 2 contacts**. The legs come in two pairs that are always connected inside the switch, and pressing joins the two pairs:
+
+  ```text
+     1 ●───────● 2        two legs on one side form pair A,
+       │ ( ○ ) │          the other two form pair B
+     3 ●───────● 4        pressing the dome joins A to B
+  ```
+  Which two legs form a pair depends on the switch and on which way round it sits: either 1+2 and 3+4, or 1+3 and 2+4. Never 1+4. So use **two diagonally opposite legs** (1 and 4, or 2 and 3): a diagonal always gets one leg from each pair. With one side to GP28 and the other to GND, the pin is pulled to 0 V while you press, and floats when you let go. Something has to hold it at 3.3 V when it's released: that's the pad's pull-up (TODO 5), so you don't need an external resistor. "Pressed = 0" is called **active-low**.
+
+- **Contact bounce.** The metal dome doesn't close cleanly. For about 1–5 ms after you press or release, it makes and breaks contact several times, so the pin flicks between 0 and 1. Code that reads the pin very often sees that as several presses. Part B reads the pin only every 10 ms, which hides most of it. The debounce stretch challenge measures it and filters it out (**debouncing**).
 
 - **Read-modify-write.** To change some bits and keep the others, you read the register, change the bits you want, and write it back:
 
@@ -345,12 +356,31 @@ New C in this lab. For pointers, casts and `volatile`, see lab C1.
 - **`%-14s`** pads a string to 14 characters, left-aligned, so the `show()` lines form columns.
 
 ### Parts
-- One jumper wire (male–male): the "button"
+- One **6×6 mm tactile switch** (4 legs, the standard breadboard push button)
+- Two jumper wires (GP28 to the switch, switch to GND)
+- Multimeter on continuity (beep) mode, to check the switch's leg pairs
 - The datasheet
 
 ### Wiring (zone A)
 - LED on GP29 from lab 0 (330 Ω → LED → GND). Nothing to change.
-- Jumper wire from **GP28** to a free row. Touching its other end to the **GND rail** is "pressing the button". If GP28 still goes to anything from earlier labs, unplug it.
+- Push the switch in so it **straddles the centre gap**, like the RP2040-Zero, in zone A next to the LED. Its legs are stiff: line them up and press it in straight.
+- One leg to **GP28**: a short jumper from a free hole in GP28's row to the leg's row.
+- The **diagonally opposite** leg to the **GND rail** with a jumper.
+- No resistor: the pull-up is inside the chip (TODO 5).
+- **Check the switch before you power up.** Multimeter on continuity between your two legs: silent when released, beeps while pressed. If it beeps all the time, the two legs are in the same pair: they aren't diagonal. Move one wire.
+- If GP28 still goes to anything from earlier labs, unplug it.
+
+```text
+            GP28
+             │
+        ┌────┴────┐
+        │ 1     2 │      6×6 mm switch across the centre gap
+  ─ ─ ─ │  ( ○ )  │ ─ ─
+        │ 3     4 │
+        └─────────┘
+                  │
+              GND rail      ← diagonal: leg 1 to GP28, leg 4 to GND
+```
 
 ### Tasks
 
@@ -375,8 +405,10 @@ New C in this lab. For pointers, casts and `volatile`, see lab C1.
 - Comment out TODO 1 only. Does the LED still blink? Does `GPIO_OUT` still change? Why? Put it back.
 
 **C2.4 Part B: button** (`PART_B 1`)
-- TODO 4: FUNCSEL for GP28. TODO 5: the pull-up with read-modify-write. TODO 6: read `GPIO_IN`.
-- Check the pad value before and after TODO 5. Is it what you calculated from the pad table? Touch the wire to GND: the LED comes on and it prints `pressed`.
+- TODO 4: FUNCSEL for GP28. TODO 5: the pull-up and input enable with read-modify-write. TODO 6: read `GPIO_IN`.
+- Check the pad value before and after TODO 5. Is it what you calculated from the pad table?
+- IE is already 1 after reset, so why does TODO 5 set it anyway? Find where the SDK's `gpio_set_function()` writes the pad register (`hardware_gpio/gpio.c`). Which pad bits does it force, and why would a library never trust the reset value? Press the button: the LED comes on and it prints `pressed`. Release: off, `released`.
+- Press quickly and often. Do you ever see two `pressed` lines for one press? That's bounce.
 - Skip TODO 5 (comment it out). What does the button do now, and why? Your pad decode from C2.1 should predict it. Put it back.
 - **Is TODO 4 needed to *read* a pin?** Find the GPIO function descriptions table (the one right after the function table) and read the SIO row. Then comment out TODO 4 and test it. Put it back.
 
@@ -458,17 +490,35 @@ if (pressed != was_pressed) {
     was_pressed = pressed;
 }
 ```
-- Without the pull-up, the pull-down holds the pin at 0 all the time, and touching GND changes nothing. It reads "pressed" forever.
+- Without the pull-up, the pull-down holds the pin at 0 all the time, and pressing (connecting it to GND) changes nothing. It reads "pressed" forever.
 - **Table 280**, page 238, SIO row: "The SIO function (F5) must be selected for the processors to drive a GPIO, but the input is always connected, so software can check the state of GPIOs at any time." So TODO 4 is only needed for *outputs*. Reading works whatever FUNCSEL says, as long as the pad's IE bit is on.
+</details>
+
+<details><summary>Stretch: debouncing</summary>
+
+```c
+static uint32_t same_count;
+static bool stable = false;             // the debounced state
+bool raw = !((REG(SIO_GPIO_IN) >> BUTTON_PIN) & 1u);
+if (raw == stable) {
+    same_count = 0;                     // nothing new
+} else if (++same_count >= 5) {         // a different value 5 reads in a row: believe it
+    stable = raw;
+    same_count = 0;
+    printf(stable ? "pressed\n" : "released\n");
+}
+sleep_ms(1);
+```
+`++same_count` adds 1 *before* the comparison uses the value. A bounce resets the count, because the pin flicks back to the old state. Only a steady new value lasts for 5 reads.
 </details>
 
 <details><summary>TODO 7: aliases</summary>
 
 ```c
-REG(PAD(BUTTON_PIN) + ALIAS_SET) = PAD_PUE;
+REG(PAD(BUTTON_PIN) + ALIAS_SET) = PAD_PUE | PAD_IE;
 REG(PAD(BUTTON_PIN) + ALIAS_CLR) = PAD_PDE;
 ```
-No read at all. Each line is one store, and the hardware changes only the bits that are 1 in the value you write.
+No read at all. Each line is one store (and one store can set several bits at once): the hardware changes only the bits that are 1 in the value you write.
 </details>
 
 ### Stretch challenges
@@ -476,6 +526,7 @@ No read at all. Each line is one store, and the hardware changes only the bits t
 - [ ] **Drive strength:** decode the pad's DRIVE field with your C1 `field_get()`. What are the four values, according to Table 341?
 - [ ] **Input enable:** in Part B, clear `PAD_IE` on GP28 with the CLR alias. What does `GPIO_IN` read now, pressed or not?
 - [ ] **Open drain:** make GP29 "low or let go" instead of "low or high": keep `GPIO_OUT` at 0 and toggle `GPIO_OE` (you'll need `GPIO_OE_CLR` from Table 16). Does the LED still light? (It's wired to GND, so think about what drives it high.) I2C works this way.
+- [ ] **Measure the bounce, then debounce:** in Part B, poll every 1 ms instead of 10 and count how many times `pressed` changes for one press. Then debounce: only accept a new state once the pin has read the same value 5 times in a row (5 ms). Count again.
 - [ ] **Read the SDK:** Section 2.19.2 shows an excerpt of `gpio_set_function()`. Find the whole function in the SDK's `hardware_gpio/gpio.c`. Which of your lines matches which of theirs? Do they use aliases?
 
 ### Checks
@@ -484,7 +535,7 @@ No read at all. Each line is one store, and the hardware changes only the bits t
 - [ ] RESET / RESET_DONE read and compared with Table 202; I found where in the SDK the blocks are released, and why some wait for the clocks
 - [ ] LED blinks with only register writes
 - [ ] Explain why the LED stays dark without TODO 1 even though `GPIO_OUT` changes
-- [ ] Button lights the LED. I can say from the datasheet whether TODO 4 is needed, and tested it
+- [ ] Switch checked with the multimeter; button lights the LED. I can say from the datasheet whether TODO 4 is needed, and tested it
 - [ ] Explain read-modify-write vs alias writes, and why SIO has its own SET/CLR registers
 - [ ] Zero warnings in the mode you finish in
 
@@ -514,6 +565,8 @@ No read at all. Each line is one store, and the hardware changes only the bits t
 *Without TODO 1:*
 
 *Without TODO 4 / without TODO 5:*
+
+*Bounce: did one press ever print twice? (Stretch: changes counted per press, before / after debouncing.)*
 
 *Why aliases are safe (with the sentence from 2.1.2):*
 
@@ -602,8 +655,8 @@ Same as lab C2.
 - Which three are byte-for-byte identical? The fourth reaches the same address another way: how? Find `str` in each one and work out the address and the value it writes. Which register in Table 16 is that address?
 
 **C3.4 Part B: the missing `volatile`** (`PART_B 1`, `USE_VOLATILE 1`)
-- TODO 6. Touch GP28 to GND: `pressed!` and a flash. Repeat a few times.
-- Now `USE_VOLATILE 0`. Predict what happens before you flash it. Then try it, *without* touching GND at startup.
+- TODO 6. Press the button: `pressed!` and a flash. Repeat a few times. After each release the code waits 20 ms before it looks again. Why? *(See C2's contact bounce.)*
+- Now `USE_VOLATILE 0`. Predict what happens before you flash it. Then try it, *without* holding the button at startup. What happens if you hold it down while the board starts?
 - Find `<wait_for_press>:` in the `.dis` for both versions and copy them into Notes. Point at the instruction the plain version loops on forever. Where is the `ldr` in each version: inside the loop or before it?
 - Set `USE_VOLATILE` back to 1.
 

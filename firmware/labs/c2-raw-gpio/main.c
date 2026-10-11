@@ -3,7 +3,7 @@
 // Goal: find every address and bit number in the datasheet yourself, then blink lab 0's LED and
 // read a "button" without any gpio_...() function: only those numbers, a pointer cast, and
 // the bit operators from lab C1.
-// Hardware: LED on GP29 (zone A, from lab 0). A jumper wire in GP28 is the button: touch it to GND.
+// Hardware: LED on GP29 (zone A, from lab 0). 6×6 mm tactile switch between GP28 and GND.
 // See labs/c-labbook.md, "Lab C2". Datasheet: docs/RP-008371-DS-1-rp2040-datasheet.pdf
 
 #include <stdio.h>
@@ -32,7 +32,7 @@
 
 // D2: IO_BANK0's list of registers. Offset of GPIO0_CTRL, and the distance from one pin's CTRL to the next.
 #define CTRL_FIRST      0x004u
-#define CTRL_STRIDE     0x00cu - 0x004u
+#define CTRL_STRIDE     (0x00cu - 0x004u)
 #define GPIO_CTRL(n)    (ADDR_IO_BANK0 + CTRL_FIRST + CTRL_STRIDE * (n))
 
 // D3: the GPIOn_CTRL register table: FUNCSEL's bits as a mask.
@@ -92,7 +92,7 @@
 #define PART_B          1
 
 // 1 = TODO 7: set the pull-up through the SET / CLR aliases instead of read-modify-write
-#define USE_ALIASES     0
+#define USE_ALIASES     1
 
 // Paste your finished print_bin() from lab C1 here (TODO 0).
 static void print_bin(uint32_t x) {
@@ -173,6 +173,17 @@ static void show_resets(void) {
     printf("PADS_BANK0: %s\n", pads ? "in reset" : "running");
 }
 
+static void stratic_blink(){
+        for (int i = 0; i < 2; i++) {
+            REG(SIO_GPIO_XOR) = (1u << LED_PIN);
+            sleep_ms(15);
+            REG(SIO_GPIO_XOR) = (1u << LED_PIN);
+            sleep_ms(60);
+        }
+        sleep_ms(500);
+
+}
+
 int main(void) {
     stdio_init_all();
     sleep_ms(2000);     // give the serial monitor time to connect
@@ -192,46 +203,78 @@ int main(void) {
 
     // TODO 1: hand GP29 to the SIO. Read-modify-write GPIO_CTRL(LED_PIN):
     //         clear the FUNCSEL bits with & ~FUNCSEL_MASK, then | FUNCSEL_SIO.
-    printf("IO_BANK0 BASE: 0x%08X\n", ADDR_IO_BANK0);
-    printf("CTRL_FIRST:    0x%08X\n", CTRL_FIRST);
-    printf("CTRL_STRIDE:   0x%08X\n", CTRL_STRIDE);
-    printf("GPIO_CTRL(29): 0x%08X\n", GPIO_CTRL(29));
+    uint32_t ctrl29 = REG(GPIO_CTRL(LED_PIN));
+    ctrl29 &= ~FUNCSEL_MASK;
+    ctrl29 |= FUNCSEL_SIO;
+    REG(GPIO_CTRL(LED_PIN)) = ctrl29;
 
     // TODO 2: make GP29 an output: write its bit (1u << LED_PIN) to SIO_GPIO_OE_SET.
-
+    REG(SIO_GPIO_OE_SET) = (1u << LED_PIN);
     printf("after:\n");
     show("GP29 CTRL", GPIO_CTRL(LED_PIN));
     show("SIO GPIO_OE", SIO_GPIO_OE);
 
 #if !PART_B
     while (true) {
-        // TODO 3: flip the LED with one write to SIO_GPIO_XOR.
-        show("SIO GPIO_OUT", SIO_GPIO_OUT);
-        sleep_ms(BLINK_MS);
+        for (int i = 0; i < 2; i++) {
+            REG(SIO_GPIO_XOR) = (1u << LED_PIN);
+            sleep_ms(15);
+            REG(SIO_GPIO_XOR) = (1u << LED_PIN);
+            sleep_ms(60);
+        }
+
+        sleep_ms(500);
     }
 #else
     printf("button:\n");
     show("GP28 PAD", PAD(BUTTON_PIN));
 
     // TODO 4: hand GP28 to the SIO as well (same as TODO 1). Its OE bit stays 0, so it's an input.
+    uint32_t ctrl28 = REG(GPIO_CTRL(BUTTON_PIN));
+    ctrl28 &= ~FUNCSEL_MASK;
+    ctrl28 |= FUNCSEL_SIO;
+    REG(GPIO_CTRL(BUTTON_PIN)) = ctrl28;
+
 
 #if !USE_ALIASES
     // TODO 5: switch GP28 from pull-down to pull-up with one read-modify-write of PAD(BUTTON_PIN):
-    //         set PAD_PUE, clear PAD_PDE.
+    //         set PAD_PUE and PAD_IE, clear PAD_PDE. IE is already 1 after reset, but don't rely
+    //         on reset values: set every bit your code needs, like the SDK's gpio_set_function() does.
+    uint32_t pad28 = REG(PAD(BUTTON_PIN));
+    pad28 |= PAD_PUE;
+    pad28 &= ~PAD_PDE;
+    pad28 |= PAD_IE;
+    REG(PAD(BUTTON_PIN)) = pad28;
+
 #else
-    // TODO 7: the same, but with two plain writes: PAD_PUE to the SET alias, PAD_PDE to the CLR alias.
+    // TODO 7: the same, but with two plain writes: PAD_PUE | PAD_IE to the SET alias, PAD_PDE to the CLR alias.
+    REG(PAD(BUTTON_PIN) + ALIAS_SET) = PAD_PUE | PAD_IE;
+    REG(PAD(BUTTON_PIN) + ALIAS_CLR) = PAD_PDE;
+
 #endif
     show("GP28 PAD", PAD(BUTTON_PIN));
 
     bool was_pressed = false;
     while (true) {
-        // TODO 6: read bit BUTTON_PIN of SIO_GPIO_IN. With the pull-up, 1 = released, 0 = touching GND.
+        // TODO 6: read bit BUTTON_PIN of SIO_GPIO_IN. With the pull-up, 1 = released, 0 = pressed.
         //         LED on (SIO_GPIO_SET) while pressed, off (SIO_GPIO_CLR) while released.
         //         Print "pressed" / "released" only when it changes.
-        bool pressed = false;
-        (void)was_pressed;
-        (void)pressed;
-        sleep_ms(10);
+        bool pressed = !((REG(SIO_GPIO_IN) >> BUTTON_PIN) & 1u);
+
+        // if (pressed){
+        //     stratic_blink();
+        // } else{
+        //     REG(SIO_GPIO_CLR) =1u << LED_PIN;
+        // }
+        REG(pressed ? SIO_GPIO_SET : SIO_GPIO_CLR) = 1u << LED_PIN;
+        if (pressed != was_pressed) {
+            printf("%s\n", pressed ? "pressed" : "released");
+            was_pressed = pressed;
+        }
+        sleep_ms(100);
+
     }
+
+
 #endif
 }

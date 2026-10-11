@@ -3,7 +3,7 @@
 // Goal: write the same LED toggle four ways (raw address, your own struct, the SDK's struct,
 // the SDK function) and prove in the .dis file that they compile to the same instructions.
 // Then remove `volatile` from a button loop and watch the program hang.
-// Hardware: same as lab C2 (LED on GP29, jumper wire on GP28). See labs/c-labbook.md, "Lab C3".
+// Hardware: same as lab C2 (LED on GP29, tactile switch from GP28 to GND). See labs/c-labbook.md, "Lab C3".
 // Datasheet: docs/RP-008371-DS-1-rp2040-datasheet.pdf
 
 #include <stdio.h>
@@ -42,7 +42,7 @@ __attribute__((noipa)) static void toggle_sdk_function(void) {
 }
 
 #else
-// Wait until GP28 reads 0 (touched to GND)
+// Wait until GP28 reads 0 (button pressed)
 __attribute__((noipa)) static void wait_for_press(void) {
 #if USE_VOLATILE
     volatile uint32_t *in = (volatile uint32_t *)0xD0000004u;
@@ -87,7 +87,7 @@ int main(void) {
     }
 #else
     while (true) {
-        printf("touch GP28 to GND...\n");
+        printf("press the button...\n");
         wait_for_press();
         printf("pressed!\n");
         gpio_put(LED_PIN, 1);
@@ -96,6 +96,7 @@ int main(void) {
         while (!gpio_get(BUTTON_PIN)) {
             sleep_ms(10);   // wait for release
         }
+        sleep_ms(20);       // let the contacts stop bouncing, or a bounce looks like a new press
     }
 #endif
 }
