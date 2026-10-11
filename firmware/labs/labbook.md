@@ -84,7 +84,7 @@ Only edge pins are used, so there's no need for the bottom pads.
 | Pin | Use | Labs |
 |---|---|---|
 | GP0–GP7 | R-2R ladder bits 0 (LSB) … 7 (MSB), contiguous so one masked write sets all 8 bits | 5 |
-| GP8 | UART1 TX debug output, for when USB is busy doing audio | 8 |
+| GP8 | Second LED for lab C3's police lights, then UART1 TX debug output, for when USB is busy doing audio | C3, 8 |
 | GP14 / GP15 | Audio out L / R: PWM slice 7, channels A / B | 1–4, 6 |
 | GP16 | Onboard WS2812 RGB LED (not on a header) | later |
 | GP26 / GP27 / GP28 | ADC0–2: measure our own DAC outputs ("loopback") | 2+ |

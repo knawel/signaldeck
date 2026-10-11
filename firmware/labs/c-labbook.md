@@ -406,8 +406,8 @@ New C in this lab. For pointers, casts and `volatile`, see lab C1.
 
 **C2.4 Part B: button** (`PART_B 1`)
 - TODO 4: FUNCSEL for GP28. TODO 5: the pull-up and input enable with read-modify-write. TODO 6: read `GPIO_IN`.
-- Check the pad value before and after TODO 5. Is it what you calculated from the pad table?
-- IE is already 1 after reset, so why does TODO 5 set it anyway? Find where the SDK's `gpio_set_function()` writes the pad register (`hardware_gpio/gpio.c`). Which pad bits does it force, and why would a library never trust the reset value? Press the button: the LED comes on and it prints `pressed`. Release: off, `released`.
+- Check the pad value before and after TODO 5. Is it what you calculated from the pad table? Press the button: the LED comes on and it prints `pressed`. Release: off, `released`.
+- IE is already 1 after reset, so why does TODO 5 set it anyway? Find where the SDK's `gpio_set_function()` writes the pad register (`hardware_gpio/gpio.c`). Which pad bits does it force, and why would a library never trust the reset value?
 - Press quickly and often. Do you ever see two `pressed` lines for one press? That's bounce.
 - Skip TODO 5 (comment it out). What does the button do now, and why? Your pad decode from C2.1 should predict it. Put it back.
 - **Is TODO 4 needed to *read* a pin?** Find the GPIO function descriptions table (the one right after the function table) and read the SIO row. Then comment out TODO 4 and test it. Put it back.
@@ -577,7 +577,7 @@ No read at all. Each line is one store (and one store can set several bits at on
 ## Lab C3 — Register structs, `volatile` and the disassembly
 
 ### Goal
-Turn the datasheet's list of SIO registers into your own C struct, the way the SDK does it. Toggle the LED four ways (raw address, your struct, the SDK's `sio_hw`, `gpio_xor_mask()`) and check in the `.dis` file that they all compile down to the same single store. Then remove `volatile` from a button loop and find the exact instruction that makes the program hang. Finally, answer four questions from labs 4 and 5 with the datasheet.
+Turn the datasheet's list of SIO registers into your own C struct, the way the SDK does it. Toggle the LED four ways (raw address, your struct, the SDK's `sio_hw`, `gpio_xor_mask()`) and check in the `.dis` file that they all compile down to the same single store. Blink two LEDs like police lights and see why "one store" matters when several pins must change together. Then remove `volatile` from a button loop and find the exact instruction that makes the program hang. Finally, answer four questions from labs 4 and 5 with the datasheet.
 
 ### Background
 - **Struct overlays.** C2 needed one `#define` per register. A struct describes a whole block at once: the fields are laid out one after another in memory, 4 bytes each, so a field's offset in the struct *is* the register's offset in the block. The struct is a copy of the datasheet's list of registers, written in C:
@@ -636,7 +636,13 @@ New C in this lab. For macros see lab C2, and for pointers and `->` see lab 4.
 - **`%p`** prints a pointer (an address) in hex. It expects a `void *`, which is "an address of anything", so the code casts with `(void *)`.
 
 ### Parts
-Same as lab C2.
+Same as lab C2, plus for C3.3b:
+- A second LED and a 330 Ω resistor
+
+### Wiring
+- Everything from lab C2 stays: LED on GP29, the switch from GP28 to GND.
+- **C3.3b:** GP8 → 330 Ω → second LED's long leg (anode); its short leg (cathode) → GND rail. GP8 is the last header pin on the GP0 side, just after the R-2R ladder's GP0–GP7. If the ladder is still plugged in, leave it: nothing in this lab drives GP0–GP7.
+- GP8 is free until lab 8, which uses it for UART debug output. Take the LED off then.
 
 ### Tasks
 
@@ -653,6 +659,14 @@ Same as lab C2.
 - TODOs 3–5. All four ways should now give 2 blinks each.
 - Open `build/c3-reg-structs/labc3_reg_structs.dis` and search for `<toggle_raw>:`, `<toggle_my_struct>:`, `<toggle_sdk_struct>:`, `<toggle_sdk_function>:`. Copy them into Notes.
 - Which three are byte-for-byte identical? The fourth reaches the same address another way: how? Find `str` in each one and work out the address and the value it writes. Which register in Table 16 is that address?
+
+**C3.3b Police lights: two LEDs, one store** (`PART_B 0`, `POLICE 1`; needs your struct from C3.2)
+- Wire the second LED on GP8 (see Wiring).
+- TODO 7, `flash()`: switch only the LEDs in `mask` on, then off. Which two fields of your struct do that without reading anything? Why not `MY_SIO->gpio_out = mask;`? *(What happens to every other output pin, including the other LED?)*
+- TODO 8: flip both LEDs with **one** store. TODO 9: the same as two stores, GP29 then GP8. TODO 10: before the alternating part, GP29 on and GP8 off.
+- Run it. Police double-flashes, then alternating, first `one store`, then `two stores`. Can you see any difference?
+- Find `<swap_one_store>:` and `<swap_two_stores>:` in the `.dis` file and copy them into Notes. In `swap_one_store`, the mask is a `.word`: write it in binary and point at the two 1s. In `swap_two_stores`, count the instructions between the two `str`s. At 125 MHz one clock cycle is 8 ns. For roughly how long are both LEDs on, or both off?
+- Your eyes can't see that, but hardware can. Two cases where it matters: a motor driver (H-bridge), where two pins that are both on for even a few nanoseconds short the supply; and lab 5's R-2R ladder, where 8 pins written one at a time would step through wrong voltages on the way. Why were the ladder's pins put on GP0–GP7 and not scattered?
 
 **C3.4 Part B: the missing `volatile`** (`PART_B 1`, `USE_VOLATILE 1`)
 - TODO 6. Press the button: `pressed!` and a flash. Repeat a few times. After each release the code waits 20 ms before it looks again. Why? *(See C2's contact bounce.)*
@@ -703,6 +717,27 @@ while (*in & BUTTON_MASK) {}
 Delete `(void)in;`. `gpio_xor_mask()` is a `static inline` function in the SDK's `gpio.h`: a function whose body the compiler copies into the caller, so it costs no call.
 </details>
 
+<details><summary>TODOs 7–10: police lights</summary>
+
+```c
+MY_SIO->gpio_set = mask;            // TODO 7
+sleep_ms(40);
+MY_SIO->gpio_clr = mask;
+sleep_ms(60);
+
+MY_SIO->gpio_togl = LED_MASK | LED2_MASK;   // TODO 8: both bits in one value
+
+MY_SIO->gpio_togl = LED_MASK;               // TODO 9
+MY_SIO->gpio_togl = LED2_MASK;
+
+MY_SIO->gpio_set = LED_MASK;                // TODO 10
+MY_SIO->gpio_clr = LED2_MASK;
+```
+Delete `(void)mask;`. `gpio_out = mask` writes all 30 bits: every output pin not in `mask` goes low, including the other LED. `gpio_set` and `gpio_clr` touch only the 1 bits.
+
+`swap_one_store` loads `0x20000100` from a `.word`: bit 29 and bit 8, `LED_MASK | LED2_MASK`, worked out by the compiler. Then a single `str` to offset `#28`, which is GPIO_OUT_XOR. `swap_two_stores` has two `str`s to `#28`, with two instructions in between to build the second mask (`128 << 1` = `1u << 8`). That's a few clock cycles, a few tens of nanoseconds, when one LED has flipped and the other hasn't.
+</details>
+
 <details><summary>What the disassembly should look like</summary>
 
 The three struct/function versions build `0xD0000000` as `0xd0 << 24`, build `LED_MASK` as `128 << 22`, then `str r2, [r3, #28]`: store at base + 0x1C, which is GPIO_OUT_XOR. `toggle_raw` loads the full address `0xd000001c` from a `.word` after the function and stores at offset `#0`. It's the same write to the same address, just a different route to the number.
@@ -730,6 +765,7 @@ The three struct/function versions build `0xD0000000` as `0xd0 << 24`, build `LE
 - [ ] Found the gap at 0x00C and explained why the struct needs `_pad0`
 - [ ] Four ways blink; disassembly of all four copied, and I found the `str`, its address, and which Table 16 register that is
 - [ ] Explain why three are identical and how `toggle_raw` differs
+- [ ] Police lights on GP29 and GP8; I found the one `str` and the two `str`s in the disassembly and can say when the difference matters
 - [ ] Plain-pointer version hangs; I found the endless `b.n` and explained why the `ldr` is outside the loop
 - [ ] Explain when a variable needs `volatile`
 - [ ] All four C3.5 questions answered with section, page and a quote
@@ -743,6 +779,8 @@ The three struct/function versions build `0xD0000000` as `0xd0 << 24`, build `LE
 *What I missed in the struct the first time (if anything):*
 
 *Disassembly of the four toggles:*
+
+*swap_one_store vs swap_two_stores (the mask in binary, the gap between the two stores):*
 
 *wait_for_press, volatile vs plain:*
 
