@@ -40,3 +40,8 @@ add_subdirectory(02-pwm-dac)
 add_subdirectory(03-sine-dds)
 add_subdirectory(04-dma-feed)
 add_subdirectory(05-r2r-ladder)
+
+# C side-labs: bits and registers
+add_subdirectory(c1-bits)
+add_subdirectory(c2-raw-gpio)
+add_subdirectory(c3-reg-structs)

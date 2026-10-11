@@ -22,6 +22,8 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | 7 | PCM5102A over I2S | ⬜ |
 | 8 | USB audio → PCM5102A (main firmware) | ⬜ |
 
+**C side-labs** (bits and registers, no audio): C1–C3 live in their own book, [c-labbook.md](c-labbook.md), with their own index.
+
 ---
 
 ## Prototype board: base layout
