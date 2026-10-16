@@ -21,10 +21,10 @@
 #define BUTTON_MASK     (1u << BUTTON_PIN)
 
 // Part A: 0 = blink four ways. Part B: 1 = wait for the button.
-#define PART_B          0
+#define PART_B          1
 
 // Part A only: 0 = the four toggles (C3.3), 1 = police lights on two LEDs (C3.3b)
-#define POLICE          0
+#define POLICE          1
 
 // Part B: 1 = read the button through a volatile pointer, 0 = through a plain one
 #define USE_VOLATILE    1
@@ -37,14 +37,17 @@ __attribute__((noipa)) static void toggle_raw(void) {
 
 __attribute__((noipa)) static void toggle_my_struct(void) {
     // TODO 3: the same write, through MY_SIO
+    MY_SIO->gpio_togl = LED_MASK;
 }
 
 __attribute__((noipa)) static void toggle_sdk_struct(void) {
     // TODO 4: the same write, through the SDK's sio_hw
+    sio_hw->gpio_togl = LED_MASK;
 }
 
 __attribute__((noipa)) static void toggle_sdk_function(void) {
     // TODO 5: the same, with gpio_xor_mask()
+    gpio_xor_mask(LED_MASK);
 }
 
 #elif !PART_B
@@ -52,17 +55,24 @@ __attribute__((noipa)) static void toggle_sdk_function(void) {
 __attribute__((noipa)) static void flash(uint32_t mask) {
     // TODO 7: switch the LEDs in mask on through MY_SIO, wait 40 ms, switch them off, wait 60 ms.
     //         Only the pins in mask may change: which two fields do that without a read?
-    (void)mask;
+    MY_SIO->gpio_togl = mask;
+    sleep_ms(40);
+    MY_SIO->gpio_togl = mask;
+    sleep_ms(60);
+
 }
 
 // Both LEDs change state in ONE store.
 __attribute__((noipa)) static void swap_one_store(void) {
     // TODO 8: flip GP29 and GP8 together through MY_SIO
+    MY_SIO->gpio_togl = LED_MASK | LED2_MASK;
 }
 
 // The same, with one store per LED.
 __attribute__((noipa)) static void swap_two_stores(void) {
     // TODO 9: flip GP29, then GP8, as two separate writes
+    MY_SIO->gpio_togl = LED_MASK;
+    MY_SIO->gpio_togl = LED2_MASK;
 }
 
 #else
@@ -74,7 +84,9 @@ __attribute__((noipa)) static void wait_for_press(void) {
     uint32_t *in = (uint32_t *)0xD0000004u;
 #endif
     // TODO 6: loop while the BUTTON_MASK bit of *in is still 1. The loop body is empty: {}
-    (void)in;
+    while(*in == BUTTON_MASK){
+
+    }
 }
 #endif
 
@@ -120,7 +132,9 @@ int main(void) {
         for (int n = 0; n < 4; n++) {
             flash(LED_MASK);
             flash(LED_MASK);
+            flash(LED_MASK);
             sleep_ms(100);
+            flash(LED2_MASK);
             flash(LED2_MASK);
             flash(LED2_MASK);
             sleep_ms(100);
