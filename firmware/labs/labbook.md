@@ -1152,7 +1152,7 @@ for (uint32_t k = 0; k < DAC_BITS; k++) {
 
 ### Checks
 - [ ] Startup prints mask `0x000000ff`
-- [ ] Multimeter: code 128 ≈ 1.65 V (half your rail)
+- [ ] Multimeter: code 128 ≈ 1.65 V (half your rail) 
 - [ ] Bit weights printed and written down. MSB within about 1 step of 128.
 - [ ] Worst DNL / INL printed, and explained whether the worst code is the ladder (major carry) or the ADC (32 / 96 / 160 / 224)
 - [ ] Ladder is monotonic, or I found the resistor that makes it non-monotonic
@@ -1167,19 +1167,19 @@ for (uint32_t k = 0; k < DAC_BITS; k++) {
 *Resistors used (values, tolerance, one batch?):*
 
 *Multimeter at code 128 / 255 / 1:*
+1.666 / 3.3 / 0.015
 
 *Bit weights (DAC steps):*
 
-| Bit | Ideal | Measured |
-|---|---|---|
-| 0 | 1 | |
-| 1 | 2 | |
-| 2 | 4 | |
-| 3 | 8 | |
-| 4 | 16 | |
-| 5 | 32 | |
-| 6 | 64 | |
-| 7 | 128 | |
+bit  ideal  measured   (in DAC steps)
+0      1     15.34    0.96
+1      2     30.60    1.91
+2      4     61.82    3.86
+3      8    125.72    7.86
+4     16    252.34   15.77
+5     32    491.76   30.74
+6     64    996.12   62.26
+7    128   2003.72  125.23
 
 *Worst DNL (code) / worst INL (code) / monotonic? How much they vary between runs:*
 

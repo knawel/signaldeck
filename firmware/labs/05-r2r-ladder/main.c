@@ -42,7 +42,7 @@ static void dac_write(uint8_t code) {
 #if !WRITE_SLOW
     // TODO 2: set all 8 ladder pins at once with gpio_put_masked(mask, value).
     //         The value has to be shifted to line up with DAC_BASE_PIN.
-    (void)code;
+    gpio_put_masked(DAC_MASK, (uint32_t)code << DAC_BASE_PIN);
 #else
     // TODO 6: for k = 0 … DAC_BITS − 1: gpio_put() pin DAC_BASE_PIN + k to bit k of code,
     //         then busy_wait_us(BIT_DELAY_US).
@@ -77,9 +77,11 @@ static void test_bit_weights(void) {
     for (uint32_t k = 0; k < DAC_BITS; k++) {
         // TODO 3: measure code 1u << k, subtract `zero`, and divide by ADC_PER_STEP to get DAC steps.
         //         Print k, the ideal weight (1u << k) and the measured weight with 2 decimals.
-        (void)k;
+        float k_count = measure_code(1u<< k) - zero;
+        float dac_steps = k_count / ADC_PER_STEP;
+        printf("%lu    %3lu   %7.2f  %6.2f\n", k, (uint32_t)1u << k, k_count, dac_steps);
     }
-    (void)zero;
+
 }
 
 // All 256 codes: is every step the same size (DNL), and is the staircase straight (INL)?
@@ -147,6 +149,8 @@ int main(void) {
 
     // TODO 1: set up the 8 ladder pins as outputs in one go:
     //         gpio_init_mask(DAC_MASK), then gpio_set_dir_out_masked(DAC_MASK).
+    gpio_init_mask(DAC_MASK);
+    gpio_set_dir_out_masked(DAC_MASK);
 
     printf("Lab 5: R-2R ladder on GP%d-GP%d, mask 0x%08lx\n",
            DAC_BASE_PIN, DAC_BASE_PIN + DAC_BITS - 1, (uint32_t)DAC_MASK);
