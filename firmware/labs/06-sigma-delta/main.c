@@ -33,7 +33,7 @@
 //   0 = Part A: the same 32-bit pattern over and over (tests the PIO on its own)
 //   1 = Part B: steady levels through the sigma-delta modulator, measured with the ADC
 //   2 = Part C: lab 3's sine through the modulator
-#define PART            0
+#define PART            2
 
 // Part B: after the measurements, hold 32768 + IDLE_OFFSET for 5 s and listen (task 6.5)
 #define IDLE_OFFSET     64
@@ -56,6 +56,12 @@ static void sd_pio_init(void) {
     //         (b) shift right (LSB first), autopull on, every 32 bits: sm_config_set_out_shift()
     //         (c) one instruction per bit: divider = clk_sys / BIT_RATE_HZ, sm_config_set_clkdiv()
     //             Print the divider with 5 decimals.
+    sm_config_set_out_pins(&c, AUDIO_PIN, 1);
+    sm_config_set_out_shift(&c, true, true, 32);
+    float div = (float)clock_get_hz(clk_sys) / BIT_RATE_HZ;
+    sm_config_set_clkdiv(&c, div);
+    printf("%lu Hz, Div = %.5f, %lu bits/s\n", clock_get_hz(clk_sys), div, (uint32_t)BIT_RATE_HZ);
+
 
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);                  // one 8-word TX FIFO, no RX
 
@@ -84,8 +90,11 @@ static uint32_t sd_next_word(uint16_t x) {
     for (uint32_t n = 0; n < 32; n++) {
         // TODO 4: add x to sd_acc in 32 bits. Bit 16 of the sum (the carry) is this output bit.
         //         Keep the low 16 bits in sd_acc. Put the bit at position n of word.
+        uint32_t sum = sd_acc + x;
+        uint16_t bit = sum >> 16;
+        sd_acc = sum;
+        word |= bit << n;
     }
-    (void)x;
     return word;
 }
 #endif
@@ -157,7 +166,11 @@ static void part_a(void) {
         // TODO 3: count the 1s in `pattern` (bit k is (pattern >> k) & 1u).
         //         Expected ADC counts = ones × 4096 / 32.
         uint32_t ones = 0;
-        uint32_t expected = 0;
+        for (uint16_t k = 0; k<32; k++){
+            ones += (pattern >>k) & 1u; 
+        }
+        uint32_t expected = ones * 4096 / 32;
+        
 
         printf("0x%08lx  %2lu/32  ", pattern, ones);
         print_reading(expected, measure());
@@ -175,7 +188,7 @@ static void part_b(void) {
     for (uint32_t i = 0; i < sizeof levels / sizeof levels[0]; i++) {
         level = levels[i];
         // TODO 5: expected ADC counts for `level`. 65536 levels → 4096 counts: shift right by 4.
-        uint32_t expected = 0;
+        uint32_t expected = level / 16;
         printf("level %5u  ", level);
         print_reading(expected, measure());
     }
@@ -214,6 +227,11 @@ static void part_c(void) {
     while (true) {
         // TODO 6: one sample: advance the phase, look up the table, then send WORDS_PER_SAMPLE
         //         words from sd_next_word() with pio_sm_put_blocking().
+        phase += phase_inc;
+        uint16_t x = sine_table[phase >> (32 - TABLE_BITS)];
+        for (uint32_t w = 0; w < WORDS_PER_SAMPLE; w++) {
+            pio_sm_put_blocking(SD_PIO, sm, sd_next_word(x));
+        }
 
         if (sd_stalled()) stalls++;
         if (time_reached(next_print)) {

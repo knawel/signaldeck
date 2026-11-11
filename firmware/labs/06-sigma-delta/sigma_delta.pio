@@ -9,5 +9,5 @@
 .wrap_target
     ; TODO 1: replace this nop with the one instruction that moves 1 bit
     ;         from the output shift register to the pins.
-    nop
+    out pins, 1
 .wrap
