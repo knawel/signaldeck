@@ -40,6 +40,7 @@ add_subdirectory(02-pwm-dac)
 add_subdirectory(03-sine-dds)
 add_subdirectory(04-dma-feed)
 add_subdirectory(05-r2r-ladder)
+add_subdirectory(06-sigma-delta)
 
 # C side-labs: bits and registers
 add_subdirectory(c1-bits)

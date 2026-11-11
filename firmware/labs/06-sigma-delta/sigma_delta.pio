@@ -1,0 +1,13 @@
+; Lab 6: shift a 1-bit stream out of one pin, one bit per state-machine clock.
+;
+; The C side sets up everything around this program (see sd_pio_init() in main.c):
+;   - `out pins` writes to AUDIO_PIN
+;   - shift right (LSB of each word goes first), autopull every 32 bits
+;   - clock divider: one instruction = one bit at BIT_RATE_HZ
+
+.program sigma_delta
+.wrap_target
+    ; TODO 1: replace this nop with the one instruction that moves 1 bit
+    ;         from the output shift register to the pins.
+    nop
+.wrap
