@@ -28,11 +28,11 @@
 
 // Part A: 0 = measure the ladder: bit weights, then every one of the 256 codes
 // Part B: 1 = play a sine through the ladder from a timer interrupt
-#define PART_B          0
+#define PART_B          1
 
 // 1 = write the 8 bits one at a time, BIT_DELAY_US apart, instead of all at once (task 5.4)
 #define WRITE_SLOW      0
-#define BIT_DELAY_US    1
+#define BIT_DELAY_US    5
 
 // 1 = also print "code,adc" for every code, to paste into a spreadsheet (stretch)
 #define PRINT_CSV       0
@@ -46,6 +46,11 @@ static void dac_write(uint8_t code) {
 #else
     // TODO 6: for k = 0 … DAC_BITS − 1: gpio_put() pin DAC_BASE_PIN + k to bit k of code,
     //         then busy_wait_us(BIT_DELAY_US).
+    for (uint32_t k = 0; k<DAC_BITS; k++){
+        gpio_put(DAC_BASE_PIN + k, (code >> k) & 1u);
+        busy_wait_us(BIT_DELAY_US);
+    }
+
     (void)code;
 #endif
 }
@@ -100,6 +105,22 @@ static void sweep_all_codes(void) {
     bool monotonic = true;
 
     for (uint32_t c = 1; c < DAC_CODES; c++) {
+        float dnl =(measured[c] - measured[c-1]) / step - 1;
+        float inl = (measured[c] - (measured[0] + c * step)) / step;
+        if (fabsf(dnl)> fabsf(worst_dnl)){
+            worst_dnl_code = c;
+            worst_dnl = dnl;
+        }
+
+        if (fabs(inl)> (fabs(worst_inl))){
+            worst_inl_code = c;
+            worst_inl = inl;
+        }
+        if (measured[c] <= measured[c - 1]){
+            monotonic = false;
+
+        }
+
         // TODO 4: DNL(c) = (measured[c] − measured[c − 1]) / step − 1
         //         INL(c) = (measured[c] − (measured[0] + c × step)) / step
         //         Keep the largest |DNL| and |INL| (use fabsf) with the code where each happened.
@@ -139,6 +160,9 @@ static uint32_t phase_inc_for(uint32_t hz) {
 static bool sample_callback(struct repeating_timer *t) {
     (void)t;
     // TODO 5: lab 3's callback, but write the sample to the ladder with dac_write().
+    phase += phase_inc;
+    uint32_t index = phase >> (32 - TABLE_BITS);
+    dac_write(sine_table[index]);
     return true;
 }
 #endif

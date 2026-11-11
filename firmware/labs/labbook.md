@@ -1,6 +1,6 @@
 # signaldeck Labbook
 
-A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resistors", before the PCM5102A module is added.
+A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resistors", before the PCM5102A module is added. This is part 1 (labs 0–5). Labs 6–8 (PIO, the PCM5102A and USB audio) continue in [part 2](labbook2.md).
 
 **How to use this book**
 - Each lab has **Goal → Background → Wiring → Tasks → Checks → Notes**.
@@ -17,10 +17,8 @@ A hands-on path from "blink an LED" to "a DAC built from a GPIO and some resisto
 | 2 | PWM DAC + RC low-pass filter | ✅ done |
 | 3 | Sine synth (lookup table + phase accumulator) | ✅ done |
 | 4 | Interrupt → DMA sample feeding | ✅ done |
-| 5 | 8-bit R-2R ladder DAC | ⬜ in progress |
-| 6 | *(optional)* Sigma-delta output via PIO | ⬜ next |
-| 7 | PCM5102A over I2S | ⬜ |
-| 8 | USB audio → PCM5102A (main firmware) | ⬜ |
+| 5 | 8-bit R-2R ladder DAC | ✅ done |
+| 6–8 | PIO sigma-delta, PCM5102A over I2S, USB audio: see [part 2](labbook2.md) | ⬜ next |
 
 **C side-labs** (bits and registers, no audio): C1–C3 live in their own book, [c-labbook.md](c-labbook.md), with their own index.
 
@@ -1152,17 +1150,17 @@ for (uint32_t k = 0; k < DAC_BITS; k++) {
 
 ### Checks
 - [ ] Startup prints mask `0x000000ff`
-- [ ] Multimeter: code 128 ≈ 1.65 V (half your rail) 
-- [ ] Bit weights printed and written down. MSB within about 1 step of 128.
-- [ ] Worst DNL / INL printed, and explained whether the worst code is the ladder (major carry) or the ADC (32 / 96 / 160 / 224)
-- [ ] Ladder is monotonic, or I found the resistor that makes it non-monotonic
-- [ ] Hear a sine through the ladder in Part B; tuner ≈ 440 Hz
+- [x] Multimeter: code 128 ≈ 1.65 V (half your rail)
+- [x] Bit weights printed and written down. MSB within about 1 step of 128.
+- [x] Worst DNL / INL printed, and explained whether the worst code is the ladder (major carry) or the ADC (32 / 96 / 160 / 224)
+- [x] Ladder is monotonic, or I found the resistor that makes it non-monotonic
+- [x] Hear a sine through the ladder in Part B; tuner ≈ 440 Hz
 - [ ] Heard what `WRITE_SLOW 1` does, and explained why Part A couldn't see it
 - [ ] Explain why `gpio_put_masked()` changes all 8 pins at the same moment
 - [ ] Zero warnings in the mode you finish in
 
 ### Notes
-*Date:*
+*Date:* 2026-11-11
 
 *Resistors used (values, tolerance, one batch?):*
 
@@ -1171,42 +1169,45 @@ for (uint32_t k = 0; k < DAC_BITS; k++) {
 
 *Bit weights (DAC steps):*
 
-bit  ideal  measured   (in DAC steps)
-0      1     15.34    0.96
-1      2     30.60    1.91
-2      4     61.82    3.86
-3      8    125.72    7.86
-4     16    252.34   15.77
-5     32    491.76   30.74
-6     64    996.12   62.26
-7    128   2003.72  125.23
+| Bit | Ideal | ADC counts | Measured (÷ 16) | Measured (÷ 15.63, real step) |
+|---|---|---|---|---|
+| 0 | 1 | 15.62 | 0.98 | 1.00 |
+| 1 | 2 | 31.00 | 1.94 | 1.98 |
+| 2 | 4 | 61.77 | 3.86 | 3.95 |
+| 3 | 8 | 125.38 | 7.84 | 8.02 |
+| 4 | 16 | 252.23 | 15.76 | 16.14 |
+| 5 | 32 | 491.62 | 30.73 | 31.45 |
+| 6 | 64 | 995.23 | 62.20 | 63.67 |
+| 7 | 128 | 2002.70 | 125.17 | 128.13 |
+
+All bits read ~2.3 % low against the ideal 16 counts/step. That's a gain error (ADC scale vs rail), not resistor mismatch: divided by the measured average step (15.63 counts), every bit is close to ideal. Bits 0–6 sum to 1972.85 counts, bit 7 is 2002.70, so the MSB is heavy by 29.85 counts ≈ 1.9 steps → predicted DNL at 128 ≈ +0.9. The sweep measures +0.61: same sign and place, but smaller. Adding up 7 separate noisy measurements (plus the ADC's own non-linearity) makes the prediction rough.
 
 *Worst DNL (code) / worst INL (code) / monotonic? How much they vary between runs:*
 
+Sweep: code 0 = 33.5, code 255 = 4018.0, average step 15.63 ADC counts (ideal 16.00).
+Worst DNL **+0.61 at code 128**, worst INL **+0.68 at code 153**, **monotonic**.
+Over several runs: worst DNL +0.61 … +0.62, switching between code 128 and code 31 (almost a tie). Worst INL 0.67 … 0.73, switching between code ~98–102 and ~153–157. Run-to-run noise ≈ 0.05 steps.
+
 *Is the worst DNL the ladder or the ADC? How I decided:*
+
+Two nearly equal spots:
+- **Code 128 = the ladder.** It's the major carry, and the bit weights predict it: the MSB is heavier than bits 0–6 combined, so 127 → 128 is too tall (positive DNL).
+- **Code 31 = the ADC.** Code 30 reads ≈ 502 counts and code 31 ≈ 518, so the step straddles ADC count 512, one of the RP2040 ADC's known wide codes. Nothing special happens in the ladder there (31 → 32 would be the carry, not 30 → 31).
+
+Positive INL in the upper half (153) also fits a heavy MSB: every code from 128 up is lifted by the same extra amount.
 
 *Ladder sine vs PWM sine, how they sounded:*
 
 *WRITE_SLOW: what I heard, and the codes passed through on 127 → 128:*
 
+With the full-scale sine and `BIT_DELAY_US 5` (the maximum: 8 × 5 µs = 40 µs of a 50 µs sample) I couldn't hear a difference. Each glitch lasts ~35 µs, twice per 2.3 ms cycle (~3 % of the time), and the loud sine plus the quiet earbud level mask it. Suggested test, not done yet: shrink the sine to ±2 codes around 128, so it is almost silent but still crosses 127 ↔ 128.
+
+Bits written LSB first:
+- 127 → 128: 126, 124, 120, 112, 96, 64, **0**, then 128. A spike down to 0 V.
+- 128 → 127: 129, 131, 135, 143, 159, 191, **255**, then 127. A spike up to full scale.
+
+Part A can't see it: `measure_code()` waits `SETTLE_US` (50 µs) after `dac_write()` returns, so the ADC only ever reads the final code. The glitch is over before the first reading.
+
 *Questions for next time:*
 
 ---
-
-<!-- Starting a new lab: create NN-name/ with its own CMakeLists.txt, add add_subdirectory(NN-name)
-     to labs/CMakeLists.txt, and add "NN-name/<executable>" to the "lab" input in .vscode/tasks.json
-     so the Run button can flash it. -->
-
-<!-- Template for the next lab — copy it below
-## Lab N — Title
-
-### Goal
-### Background
-### Parts
-### Wiring
-### Tasks
-### Hints
-### Stretch challenges
-### Checks
-### Notes
--->
