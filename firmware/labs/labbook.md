@@ -82,12 +82,13 @@ Only edge pins are used, so there's no need for the bottom pads.
 | Pin | Use | Labs |
 |---|---|---|
 | GP0–GP7 | R-2R ladder bits 0 (LSB) … 7 (MSB), contiguous so one masked write sets all 8 bits | 5 |
+| GP0 / GP1 / GP2 | I2S BCK / LRCK / DIN to the PCM5102A (BCK and LRCK must be neighbours for PIO side-set) | 7, 8 |
 | GP8 | Second LED for lab C3's police lights, then UART1 TX debug output, for when USB is busy doing audio | C3, 8 |
 | GP14 / GP15 | Audio out L / R: PWM slice 7, channels A / B | 1–4, 6 |
 | GP16 | Onboard WS2812 RGB LED (not on a header) | later |
 | GP26 / GP27 / GP28 | ADC0–2: measure our own DAC outputs ("loopback") | 2+ |
 | GP29 | External status LED | 0+ |
-| GP9–GP13 | Bottom pads, unused on the breadboard. Main firmware's I2S placeholder is GP10–12, revisit in lab 7 | 7 |
+| GP9–GP13 | Bottom pads, unused on the breadboard. The draft main firmware's I2S placeholder was GP10–12; lab 7 moved I2S to GP0–GP2 | — |
 
 ---
 
