@@ -81,7 +81,12 @@ static void i2s_init(float pio_hz) {
     //         (b) side-set starts at I2S_BCK_PIN (LRCK is the next one): sm_config_set_sideset_pins()
     //         (c) shift LEFT (MSB first), autopull on, every 32 bits:  sm_config_set_out_shift()
     //         (d) divider = clk_sys / pio_hz:                           sm_config_set_clkdiv()
-    (void)pio_hz;
+    sm_config_set_out_pins(&c, I2S_DIN_PIN, 1);
+    sm_config_set_sideset_pins(&c, I2S_BCK_PIN);
+    sm_config_set_out_shift(&c, false, true, 32);
+    sm_config_set_clkdiv(&c,  clock_get_hz(clk_sys)/ pio_hz);
+
+
 
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);                     // one 8-word TX FIFO
 
@@ -135,7 +140,11 @@ static uint32_t capture(void) {
 static uint32_t read_word(uint32_t start) {
     uint32_t word = 0;
     // TODO 3: for k = 0 … 31, shift word left by one and put cap_din[start + k] into bit 0.
-    (void)start;
+    word |= cap_din[start];
+    for (uint16_t k = 1; k<SLOT_BITS; k++){
+        word = word << 1u;
+        word |= cap_din[start + k];
+    }
     return word;
 }
 

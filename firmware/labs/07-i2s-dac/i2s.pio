@@ -21,14 +21,14 @@
 ;         Draw the frame first (labbook2, task 7.3). `jmp x-- label` jumps while x was
 ;         not 0 before it counted down, so a loop that starts with x = n runs n + 1 times.
 .wrap_target
-    set x, 0            side 0b00   ; BCK high: DAC reads the right LSB. LRCK: left from now on
+    set x, 30           side 0b01   ; BCK high: DAC reads the right LSB. LRCK: left from now on
 left_bits:
     out pins, 1         side 0b00   ; BCK low: next left bit onto DIN
-    jmp x-- left_bits   side 0b00   ; BCK high: DAC reads it
-    out pins, 1         side 0b00   ; BCK low: the left LSB, but LRCK already says right
-    set x, 0            side 0b00   ; BCK high: DAC reads the left LSB
+    jmp x-- left_bits   side 0b01   ; BCK high: DAC reads it
+    out pins, 1         side 0b10   ; BCK low: the left LSB, but LRCK already says right
+    set x, 30           side 0b11   ; BCK high: DAC reads the left LSB
 right_bits:
-    out pins, 1         side 0b00   ; BCK low: next right bit onto DIN
-    jmp x-- right_bits  side 0b00   ; BCK high: DAC reads it
+    out pins, 1         side 0b10   ; BCK low: next right bit onto DIN
+    jmp x-- right_bits  side 0b11   ; BCK high: DAC reads it
     out pins, 1         side 0b00   ; BCK low: the right LSB, but LRCK already says left
 .wrap
