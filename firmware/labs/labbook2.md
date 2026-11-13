@@ -443,7 +443,11 @@ New C in this lab. Shifts, masks, `|=`, `static`, `volatile`, casts and `&c` are
 - **Reading a register field.** CLKDIV keeps the integer part of the divider in bits 31…16 and the fraction in bits 15…8. `reg >> 16` brings the integer down to bit 0. `(reg >> 8) & 0xFF` brings the fraction down and masks off the integer above it. It's the C2/C3 skill, on a PIO register.
 
 ### Parts
-- **PCM5102A module**: the common purple board with a 3.5 mm jack (`docs/bom.md` lists two; keep one spare). Its pin headers often come **loose**, so you may need to solder them, and maybe the configuration jumpers too (task 7.4).
+- **PCM5102A module**: the common purple board with a 3.5 mm jack (`docs/bom.md` lists two; keep one spare). Its pin headers often come **loose**, so you may need to solder them, and maybe the configuration jumpers too (task 7.4). Two versions are common:
+  - **Jumper version:** one 6-pin header (typically SCK, BCK, DIN, LCK, GND, VIN), and the four configuration pins set by solder pads on the back.
+  - **Header version:** no pads. The configuration pins FLT, DMP, XMT and FMT come out to the header next to SCK (sometimes printed SCL), BCK, DIN and LCK, plus power pins VCC, 3.3V and GND. You set them with wires.
+
+  Pin order differs between makers. Always go by the labels printed on your board.
 - Short jumper wires, **10 cm or less** for BCK, LRCK and DIN
 - Earbuds, multimeter
 - Soldering iron, if the headers or jumpers need it
@@ -460,14 +464,23 @@ Rebuild the [base layout](labbook.md#prototype-board-base-layout) first: 3V3 to 
    GP1  ──────────────────────────────  LCK  (= LRCK)
    GP2  ──────────────────────────────  DIN
    GND rail ──────────────────────────  GND
-   GND rail ──────────────────────────  SCK   ← no system clock: the PLL uses BCK
-   5V pin  ── its own jumper ─────────  VIN   ← not via the rails
+   GND rail ──────────────────────────  SCK  (or SCL) ← no system clock: the PLL uses BCK
+   5V pin  ── its own jumper ─────────  VIN  (or VCC) ← not via the rails
+                                        3.3V          ← leave unconnected
                                         LOUT / ROUT / 3.5 mm jack → multimeter, earbuds
+
+   Header version only (the jumper version sets these with pads, task 7.4):
+   GND rail ──────────────────────────  FLT
+   GND rail ──────────────────────────  DMP  (= DEMP)
+   GND rail ──────────────────────────  FMT
+   3V3 rail ──────────────────────────  XMT  (= XSMT)  ← forget this one and it stays muted
 ```
 
 - **Put the module in zone B/C**, as close to the RP2040-Zero as it fits, so the three signal wires stay short. At 3 MHz, long loose wires ring, and the DAC can read a ringing edge as two.
-- **VIN from the 5V pin.** The module has its own regulators and takes 3.3–5 V on VIN (check your board's silkscreen; if it says 3.3 V only, use the 3V3 rail instead). Run one dedicated jumper from the RP2040-Zero's 5V pin to VIN, and keep 5 V off the rails, as always.
-- **SCK to GND.** Some modules have a solder bridge on the front labelled SCK for this. Either is fine; don't leave SCK floating.
+- **VIN from the 5V pin.** The module has its own regulators and takes 3.3–5 V on VIN (check your board's silkscreen; if it says 3.3 V only, use the 3V3 rail instead). Run one dedicated jumper from the RP2040-Zero's 5V pin to VIN, and keep 5 V off the rails, as always. Why not via a rail? The rails feed 3.3 V-only parts, and RP2040 pins are **not 5 V tolerant**: one lead in the wrong hole of a 5 V rail could kill a GPIO. A single point-to-point wire is easy to check.
+- **VCC is VIN.** The header version calls the regulator input VCC. To confirm, use the multimeter's continuity mode (power off) to check that VCC goes to a regulator's input pin. Its **3.3V** pin is that regulator's output. Leave it unconnected: tied to your 3V3 rail, two regulators would fight each other.
+- **SCK to GND.** Some modules have a solder bridge on the front labelled SCK for this. Either is fine; don't leave SCK floating. The header version may print it as **SCL**.
+- **Configuration pins (header version): never floating.** A floating input reads 0 or 1 at random and can change while running. FMT flipping, for example, would switch the format under your feet. XMT goes to the **3V3** rail, never to 5 V.
 - **Never wire LOUT, ROUT or the jack to an RP2040 pin** (see Background).
 - Do Part A **before** wiring the module. It only needs the bare board.
 
@@ -495,17 +508,19 @@ Rebuild the [base layout](labbook.md#prototype-board-base-layout) first: 3V3 to 
 - **Question:** the CPU reads the pins thousands of times per BCK period here. Could it do the same at the real 3.072 MHz? Roughly how many CPU cycles would it get per BCK period?
 
 **7.4 Meet the module** (power off, USB unplugged)
-- Look at both sides of the board and write down in Notes: the pin names on each header, the regulator(s), and the four configuration jumpers. On the common purple board they're on the back, numbered **1–4**, each a little pad between an **H** and an **L** pad:
+- Look at both sides of the board and write down in Notes: the pin names on each header, the regulator(s), and how the four configuration pins are set. Which version is yours (see Parts)? Either way, they must end up like this:
 
-  | # | Pin | Set to | Why |
-  |---|---|---|---|
-  | 1 | FLT | **L** | normal-latency filter |
-  | 2 | DEMP | **L** | de-emphasis off (an old CD feature) |
-  | 3 | XSMT | **H** | soft-mute *off*. Low = muted. A silent module is usually this one. |
-  | 4 | FMT | **L** | I2S format. H = left-justified. |
+  | # | Pin (header label) | Set to | Header version: wire to | Why |
+  |---|---|---|---|---|
+  | 1 | FLT | **L** | GND rail | normal-latency filter |
+  | 2 | DEMP (DMP) | **L** | GND rail | de-emphasis off (an old CD feature) |
+  | 3 | XSMT (XMT) | **H** | 3V3 rail | soft-mute *off*. Low = muted. A silent module is usually this one. |
+  | 4 | FMT | **L** | GND rail | I2S format. H = left-justified. |
 
-- If the pads aren't bridged, bridge each middle pad to the side in the table with a blob of solder. If your board brings FLT, DEMP, XSMT and FMT out to header pins instead, you can wire them to GND (L) or the 3V3 rail (H). **Use one way, not both.**
-- Wire the module as in Wiring. Check VIN, GND and SCK twice before plugging in USB.
+- **Jumper version:** the pads are on the back, numbered **1–4**, each a little middle pad between an **H** and an **L** pad. If they aren't bridged, bridge each middle pad to the side in the table with a blob of solder.
+- **Header version:** wire each pin as in the table. Don't leave any of them floating (see Wiring).
+- If your board has pads *and* header pins, **use one way, not both**.
+- Wire the module as in Wiring. Check twice before plugging in USB: VIN/VCC goes to the 5V pin, the 3.3V pin is unconnected, GND is connected, SCK/SCL goes to GND, and (header version) the four configuration wires are in place.
 
 **7.5 Part B: a 48 kHz stereo sine** (`PART 1`)
 - TODO 4: the gain. TODO 5: `to_slot()`. TODO 6: `next_slot()`.
@@ -626,7 +641,7 @@ Delete `(void)c;`. Lab 4's TODO 5, with the PWM register swapped for the FIFO an
 - [ ] Untouched Part A finds no BCK edges, and I know why
 - [ ] Part A: LRCK low 32 / high 32, both test words OK
 - [ ] Found the one-bit delay in the Part A picture
-- [ ] Module pins and jumpers recorded in Notes; FLT L, DEMP L, XSMT H, FMT L
+- [ ] Module pins and configuration (pads or wires) recorded in Notes; FLT L, DEMP L, XSMT H, FMT L
 - [ ] Part B: 440 Hz left, 660 Hz right, checked with the tuner
 - [ ] Level table: −20, −6 and 0 dBFS within about 10 % of 0.21 / 1.05 / 2.1 V rms
 - [ ] Sample rate prints 48003.07 Hz, and I can explain the 64 ppm
@@ -637,7 +652,7 @@ Delete `(void)c;`. Lab 4's TODO 5, with the PWM register swapped for the FIFO an
 ### Notes
 *Date:*
 
-*Module: pins on each header, regulators, jumpers as found / as set:*
+*Module: version (jumper / header), pins on each header, regulators, configuration as found / as set:*
 
 *Part A printout:*
 
