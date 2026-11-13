@@ -281,10 +281,11 @@ static volatile uint32_t underruns;
 static void fill_buffer(uint32_t *buf) {
     // TODO 7: for each of the BUF_FRAMES frames f: the left slot goes in buf[2f],
     //         the right slot in buf[2f + 1]. Use next_slot().
-    for (uint16_t frame=0; frame < BUF_FRAMES/2; frame++){
-
+    for (uint32_t frame=0; frame < BUF_FRAMES; frame++){
+        buf[2*frame] = next_slot(&phase_l, inc_l);
+        buf[2*frame+1] = next_slot(&phase_r, inc_r);
     }
-    (void)buf;
+
 }
 
 // Lab 4's handler, unchanged: a channel has played its buffer and already chained to the other.
@@ -313,7 +314,12 @@ static void start_dma_audio(void) {
         //         (b) chain it to the *other* channel,
         //         (c) configure it: write to &I2S_PIO->txf[sm], read from buffers[b],
         //             2 × BUF_FRAMES transfers, don't start yet.
-        (void)c;
+        channel_config_set_dreq(&c, pio_get_dreq(I2S_PIO, sm, true));
+        channel_config_set_chain_to(&c, dma_chan[1 - b]);
+        dma_channel_configure(dma_chan[b], &c,
+                      &I2S_PIO->txf[sm], 
+                      buffers[b],
+                      2 * BUF_FRAMES, false); 
 
         dma_channel_set_irq0_enabled(dma_chan[b], true);
     }
