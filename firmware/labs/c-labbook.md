@@ -642,7 +642,7 @@ Same as lab C2, plus for C3.3b:
 ### Wiring
 - Everything from lab C2 stays: LED on GP29, the switch from GP28 to GND.
 - **C3.3b:** GP8 → 330 Ω → second LED's long leg (anode); its short leg (cathode) → GND rail. GP8 is the last header pin on the GP0 side, just after the R-2R ladder's GP0–GP7. If the ladder is still plugged in, leave it: nothing in this lab drives GP0–GP7.
-- GP8 is free until lab 8, which uses it for UART debug output. Take the LED off then.
+- GP8 stays free after this lab: lab 8 keeps `printf` on USB, so the LED can stay.
 
 ### Tasks
 

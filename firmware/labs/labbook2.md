@@ -12,8 +12,8 @@ Labs 0–5 in [part 1](labbook.md) built three DACs by hand: PWM, a sine synth f
 |---|---|---|
 | 0–5 | Toolchain → R-2R ladder: see [part 1](labbook.md) | ✅ done |
 | 6 | Sigma-delta DAC through PIO | ✅ done |
-| 7 | PCM5102A over I2S | ⬜ next |
-| 8 | USB audio → PCM5102A (main firmware) | ⬜ |
+| 7 | PCM5102A over I2S | 🔶 checks open |
+| 8 | USB audio → PCM5102A | ⬜ next |
 
 ---
 
@@ -676,9 +676,337 @@ Delete `(void)c;`. Lab 4's TODO 5, with the PWM register swapped for the FIFO an
 
 ---
 
-## Lab 8 — USB audio → PCM5102A (main firmware)
+## Lab 8 — USB audio → PCM5102A
 
-*To be written.* Plan: TinyUSB UAC2 playback in `firmware/rp2040`, USB packets into lab 7's I2S buffers, and the clock drift between the computer and the DAC. The draft `firmware/rp2040/src/i2s.pio` (left-justified, GP10–12) gets replaced by lab 7's I2S program on GP0–GP2.
+### Goal
+Turn the board into a **USB sound card**. The computer finds a device called *signaldeck USB DAC*, you pick it in Sound settings, and music plays through lab 7's I2S and DMA into the PCM5102A. On the way you write the parts of a USB audio device that matter, then solve the problem every USB DAC has: the computer's clock and yours don't run at quite the same speed. The fix is the **feedback endpoint** and a small control loop.
+
+### Background
+- **Where this fits.** Lab 7 played samples the RP2040 made itself. Now they come from outside, 48 000 times a second per ear, from a computer that has its own idea of what a second is. The I2S side doesn't change at all: your `i2s.pio`, your state machine setup and your DMA ping-pong are copied into `main.c` as they are. What's new is everything in front of them:
+
+  ```text
+  computer ──USB──► TinyUSB ──► FIFO ──► fill_from_usb() ──► DMA buffers ──► PIO ──► PCM5102A
+           packets   (driver)   (bytes)   unpack, attenuate    lab 7           lab 7
+                                   ▲
+                                   └── how full is it? ──► feedback ──USB──► computer: "send a bit more / less"
+  ```
+
+- **USB in one page.** The computer is the **host** and the board is a **device**. The host decides everything: the device only ever answers. The RP2040 talks **full speed**, 12 Mbit/s. Time on the bus is cut into **frames** of exactly **1 ms**. Each one starts with a SOF ("start of frame") packet from the host, so the host's clock sets the rhythm.
+
+  Data travels through **endpoints**: numbered mailboxes, each with a direction. Seen from the host, **OUT** goes to the device and **IN** comes back from it. Bit 7 of the endpoint address is the direction: `0x01` is EP1 OUT, `0x81` is EP1 IN. Endpoint 0 is special: every device has it, and the host uses it for **control requests** ("who are you?", "what's your sample rate?"). The other endpoints each have a **transfer type**:
+
+  | Type | Guarantee | Used for |
+  |---|---|---|
+  | Control | delivered, checked, retried | setup and questions (EP0) |
+  | Bulk | delivered eventually, when the bus is free | the serial port, flash drives |
+  | Interrupt | small, polled regularly | keyboards, mice |
+  | **Isochronous** | **a reserved slot in every frame**, never retried | **audio**, video |
+
+  Audio uses isochronous: if a packet is damaged, resending it would only make it late, and a late sample is as useless as a lost one.
+
+- **Enumeration: the device introduces itself.** When you plug the board in, the host asks for its **descriptors**: tables of bytes that describe the device. TinyUSB answers by calling the `tud_descriptor_..._cb()` functions in `usb_descriptors.c`. The descriptors form a tree:
+
+  ```text
+  device descriptor          "USB 2.0, vendor 0xCAFE, product 0x4008, 1 configuration"
+  └─ configuration           "5 interfaces, up to 100 mA"
+     ├─ IAD: audio function (interfaces 0–1)
+     │  ├─ interface 0  AudioControl:   clock source, input terminal, output terminal
+     │  └─ interface 1  AudioStreaming
+     │     ├─ alt 0  idle: no endpoints, no bandwidth
+     │     └─ alt 1  streaming: format 24-bit stereo
+     │        ├─ EP 0x01 OUT  isochronous: the samples
+     │        └─ EP 0x81 IN   isochronous: the feedback
+     ├─ IAD: serial port (interfaces 2–3)  → printf
+     └─ interface 4  vendor: picotool's reset button
+  string descriptors         "signaldeck", "signaldeck USB DAC", serial number …
+  ```
+  An **interface** is one function of the device, and its **class** tells the host which driver to load. Your board has three functions at once: a sound card (UAC2, USB Audio Class 2), a serial port (CDC) and the reset interface the Run button uses. A device like this is called **composite**. An **IAD** (interface association descriptor) groups the interfaces that belong to one function. In labs 0–7 the SDK quietly provided the serial port's descriptors. Now that you have your own, the SDK steps back, and `usb_descriptors.c` lists all three.
+
+- **UAC2: the audio function as a little circuit.** Inside the AudioControl interface, the descriptors draw a graph of **entities**, connected by ID numbers:
+
+  ```text
+  USB stream ──► input terminal (ID 1) ──► output terminal (ID 3): headphones
+                        └─────── both clocked by ───────┘
+                                clock source (ID 4)
+  ```
+  The host talks to the entities with **control requests**: `GET` or `SET`, for a **control** (for the clock: *sample rate* or *clock valid*), with an **attribute**: **CUR** (the current value) or **RANGE** (the allowed values). Before it plays anything, a host asks the clock something like:
+
+  ```text
+  GET clock, sample rate, RANGE  → "which rates can you do?"     48 000 … 48 000, step 0
+  GET clock, sample rate, CUR    → "which rate are you at?"      48 000
+  GET clock, clock valid, CUR    → "is your clock stable?"       1
+  ```
+  If the device refuses (a **stall**), the host gives up on the function. That's TODO 2. A real DAC would add a *feature unit* between the terminals for volume and mute. This one leaves it out on purpose: volume will be an analog knob (`docs/architecture.md`). So the volume slider in your Sound settings stays greyed out.
+
+- **Alternate settings: bandwidth on demand.** Isochronous endpoints reserve bus time in every frame, whether or not anything is playing. So the streaming interface comes in two versions. **Alt 0** has no endpoints at all. **Alt 1** has the two audio endpoints. When an app starts playing, the host switches to alt 1 (`tud_audio_set_itf_cb()`), and some time after it stops, back to alt 0. Your event log shows both.
+
+- **What a packet looks like.** In each 1 ms frame, the host sends one packet: normally 48 frames of audio (48 000 / 1000), **interleaved** L R L R, each sample **3 bytes**, **least significant byte first** ("little-endian"):
+
+  ```text
+  byte:   0    1    2    3    4    5    6    7    8   …  285  286  287
+         [L0   L1   L2 ][R0   R1   R2 ][L0   L1   L2 ] …  [R0   R1   R2 ]
+          └─ left, frame 0 ┘└─ right, frame 0 ┘           └─ right, frame 47 ┘
+          L0 = bits 7…0, L1 = bits 15…8, L2 = bits 23…16 (with the sign bit)
+  48 frames × 2 samples × 3 bytes = 288 bytes per packet
+  ```
+  The descriptors announce this: **3 bytes per sample** (the "subslot size") and **24 bits used** (the "resolution"). They also give the **biggest packet** the host may ever send. More on why it can be bigger than 288 below. That's TODO 1.
+
+- **Two clocks, one tank.** The host sends samples at *its* 48 kHz, counted by *its* crystal. Your PIO plays them at *your* 48 003.07 Hz (lab 7), counted by *your* crystal. Crystals are only accurate to some tens of ppm, and you're 64 ppm fast on top of that. In between sits TinyUSB's **FIFO**, like a water tank: packets pour in at the top, `fill_from_usb()` drains it from the bottom.
+
+  ```text
+         host: 48 000.0 frames/s  (by the host's clock)
+                    │
+               ┌────▼────┐
+               │ ~~~~~~~ │ ← the level: frames waiting
+               │ ~~~~~~~ │   start at half full (TARGET_FRAMES)
+               └────┬────┘
+                    │
+         you: 48 003.07 frames/s  (by your clock)
+  ```
+  If the two rates differ by 64 ppm, the level changes by 48 000 × 64 × 10⁻⁶ ≈ **3 frames per second**. Your 784-frame tank, started half full, then runs dry in about two minutes, or overflows if the error goes the other way. Either way you hear a dropout, then again two minutes later, forever. Part B makes you watch it happen.
+
+- **Three ways out.** USB audio defines three kinds of isochronous stream:
+  - **Synchronous:** the device locks its clock to the host's 1 ms SOF. That needs a tunable clock (a PLL you can nudge), and SOF jitter leaks into the audio.
+  - **Adaptive:** the device measures how fast data actually arrives and tunes its clock to match. Same need for a tunable clock.
+  - **Asynchronous:** the device keeps its own clean, fixed clock and **tells the host** how fast it really plays. The host then sends slightly more or fewer samples. This is what good USB DACs do, and what your descriptors say (`TUSB_ISO_EP_ATT_ASYNCHRONOUS`). The PIO clock never changes, which is good for the sound: the DAC's clock stays clean.
+
+- **The feedback value.** Every frame, the host reads a number from the feedback endpoint: **how many samples per channel you consume per 1 ms frame**. It isn't a whole number. You consume 48.00307. So it's sent in **fixed point**, like lab 3's phase. TinyUSB takes it in **16.16** format: the top 16 bits are the whole part, the bottom 16 the fraction:
+
+  ```text
+  value = samples per frame × 65 536
+  48.0     → 48 × 65 536                 = 3 145 728
+  48.00307 → 48.00307 × 65 536 ≈ 3 145 929     (201 more: the 64 ppm)
+  ```
+  The host keeps a running total of these fractions, and whenever the total gains a whole sample it sends a **49-sample packet** instead of 48. That's why the biggest packet in TODO 1 has room for one extra frame. Full-speed USB actually specifies a 3-byte **10.14** format on the wire. TinyUSB converts for you when `CFG_TUD_AUDIO_ENABLE_FEEDBACK_FORMAT_CORRECTION` is 1, which macOS needs. Windows wants 16.16 as it is (Stretch).
+
+- **You can't compute the right value; you have to measure it.** Part B tries the obvious thing: send 48.00307, your exact rate (TODO 6b). The drift slows down, but doesn't stop. Your 48 003.07 is measured with *your* crystal, but the host counts its frames with *its* crystal, and the two disagree by some ppm you don't know. What you *can* see is the FIFO level. If it falls, you're consuming faster than the host sends, so ask for more. If it rises, ask for less. That's a **control loop**, like a thermostat:
+
+  ```text
+  error    = TARGET_FRAMES − level          (positive: too empty)
+  feedback = feedback_base + KP × error     (more than base: "send me more")
+  ```
+  This is a **proportional (P) controller**: the correction grows with the error. With KP = 8 units per frame, a 100-frame error asks for 800 / 65 536 ≈ 0.012 extra samples per frame, which is 12 frames per second, so the level comes back in seconds. A P controller settles a little **off** target: it needs some error to keep producing the small correction for the crystal mismatch. (Stretch: an integral term removes that.)
+
+- **Smoothing the level.** The raw level jumps around. A 48-frame packet arrives every 1 ms, and you take 96 frames every 2 ms, so depending on timing the level you read swings by about 48 frames, even when nothing is drifting. Feed that straight into the controller and the feedback jitters too. An **exponential moving average** smooths it:
+
+  ```text
+  avg = avg + (level − avg) / 64          each time a buffer is filled
+  ```
+  Each new reading moves the average 1/64 of the way towards it. Noise averages out, a real trend still comes through, and it costs one subtraction and one division. TODO 5 does it in 16.16 fixed point, so the average keeps a fraction of a frame.
+
+- **TinyUSB: callbacks and `tud_task()`.** TinyUSB is the USB stack the Pico SDK ships. You don't call it to handle a request. It calls **you**, through functions with fixed names: `tud_mount_cb()`, `tud_audio_set_itf_cb()`, `tud_audio_get_req_entity_cb()` and so on. Two rules follow:
+  - **Call `tud_task()` often.** On the RP2040, finished USB transfers are only handled inside `tud_task()`, including copying each audio packet into the FIFO. The main loop calls it on every pass. Hold the loop up for several milliseconds and packets are lost (task 8.7).
+  - **Never `printf` in a callback.** Callbacks run *inside* `tud_task()`, and `printf` over USB calls `tud_task()` itself to push the text out. A callback that printed would re-enter TinyUSB in the middle of its own work. So the callbacks write a small **event** into a list, and the main loop prints it later (`log_event()`, `print_events()`).
+
+- **No volume control yet, so mind your ears.** Music is mastered to peak near **0 dBFS**, which is 2.1 V rms out of the PCM5102A: far too loud for earbuds, and enough to make the line driver clip into them (lab 7). Until the analog volume knob exists, `OUTPUT_SHIFT` attenuates in software, **−6 dB per step**, and starts at 4 (−24 dB). Also keep the app's own volume low to start. With speakers you can use 0–2.
+
+### C toolbox
+New C in this lab. Casts before shifts, two's complement, pointer parameters and `_Static_assert` are in lab 7's toolbox.
+
+- **Bytes into a word, little-endian.** The wire gives you `p[0]`, `p[1]`, `p[2]`, least significant first. Building a number from bytes is shifts and ORs. Each byte is cast up to `uint32_t` *before* it's shifted, for the same reason as lab 7's `to_slot()`: a `uint8_t` is promoted to a signed `int` first, and `p[2] << 24` could shift a 1 into an `int`'s sign bit, which is undefined:
+
+  ```c
+  ((uint32_t)p[1] << 8) | p[0]     // two bytes, little-endian → a 16-bit value
+  ```
+  Where must each byte land so the sample ends up in bits 31…8, as lab 7's slots want? Note that you don't need to **sign-extend**. The sign bit, bit 7 of `p[2]`, lands in bit 31, which is exactly where a slot keeps it.
+
+- **Structs and designated initializers.** A `struct` groups named fields into one type. TinyUSB has a struct for every control answer:
+
+  ```c
+  audio_control_cur_4_t rate = { .bCur = 48000 };   // one field, called bCur
+  ```
+  `.bCur = …` is a **designated initializer**: it sets fields by name, and any field you don't mention becomes 0. Nested structs and arrays work the same way: `.subrange[0] = { .bMin = …, .bMax = … }`. `audio_control_range_4_n_t(1)` is a macro that *makes* a struct type with room for 1 subrange. TinyUSB marks these structs **packed**: no padding bytes between fields, because the bytes go straight onto the wire. The RP2040 and USB are both little-endian, so the numbers need no byte swapping.
+
+- **One set of bytes, a different struct.** `tud_audio_get_req_entity_cb()` receives a generic `tusb_control_request_t *`. For an audio request, the same 8 bytes have audio-specific meanings, so the code casts the pointer: `(audio_control_request_t const *)p_request`. No bytes move. The compiler just reads them through a different struct layout. `const` means "I promise not to change what this points at".
+
+- **Callbacks with fixed names, and weak functions.** You never tell TinyUSB about `tud_audio_set_itf_cb()`: it already calls a function with that exact name. TinyUSB contains a default version of each optional callback, marked **weak**. If you write one with the same name, the linker uses yours instead. That's why a typo in a callback's name isn't an error: your function is simply never called, and the weak default runs.
+
+- **`enum`, `typedef` and compound literals.** `typedef enum { EV_MOUNT, EV_UNMOUNT, … } event_type_t;` gives names to the numbers 0, 1, 2…, and `typedef` makes `event_type_t` a type name. `typedef struct { … } event_t;` does the same for a struct. `(event_t){type, entity, …}` is a **compound literal**: a struct value made on the spot, with its fields in order. `log_event()` assigns it in one line.
+
+- **A ring buffer with free-running counters.** The event list is an array of 32, with two counters that only ever go up: `ev_written` and `ev_printed`. The slot for counter `n` is `n & (EVENT_COUNT − 1)`, which is `n % 32` done with a mask because 32 is a power of 2. `ev_written − ev_printed` is how many events are waiting. That subtraction stays correct even when the counters wrap past 2³², thanks to unsigned arithmetic (lab 3).
+
+- **Fixed point, again.** The feedback is 16.16, so 1.0 = `1 << 16` = 65 536. To turn a `double` into it, multiply by 65 536 and round to the nearest whole number. `lround()` from `<math.h>` returns a `long`. The averaged level is 16.16 too: `level << 16` turns whole frames into 16.16, and `avg >> 16` turns it back (rounding down).
+
+- **Signed steps in unsigned variables.** The moving average's step, `(level − avg) / 64`, is negative whenever the level falls. With `uint32_t`, "negative" wraps around to about 4 billion. Do the step in `int32_t`: cast both sides to `int32_t`, subtract, divide, then add the step back. 784 frames × 65 536 is about 51 million, far below the `int32_t` limit of about 2.1 billion, so the casts are safe here.
+
+- **Why `attenuate()` divides instead of shifting right.** For negative numbers, `>>` is **implementation-defined** in C: GCC copies the sign bit in (an "arithmetic" shift), but the standard doesn't promise it. Division by a power of 2 is always defined. It rounds towards zero, which is close enough for a volume control. The cast to `int32_t` first matters: it makes the top bit count as the sign, so the divided slot stays negative.
+
+- **`#if` and `#error`.** The preprocessor can do arithmetic on `#define`s: `#if CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX == 0` checks a value before anything is compiled, and `#error "…"` stops the build with that message. `tusb_config.h` uses this to stop the untouched skeleton at TODO 1, instead of letting it build a device with a 0-byte format.
+
+- **`printf("%-9s", …)`.** A width pads the text to 9 characters, and `-` puts the padding on the right. It keeps the status lines lined up.
+
+### Parts
+Lab 7's breadboard, unchanged: the RP2040-Zero, the PCM5102A module with its configuration set, and your external jack on L/G/R. Plus:
+- Earbuds or powered speakers
+- A music player on the computer, or a website that plays test tones
+- A USB **data** cable (as always)
+
+### Wiring
+Nothing new. Check that lab 7's wiring is still there: GP0 → BCK, GP1 → LCK, GP2 → DIN, the 5V pin → VIN/VCC on its own jumper, GND, SCK to GND, and the configuration pins set.
+
+### Tasks
+
+**8.1 A map of the skeleton.** Lab 8 is several files. Open each one and read its top comment:
+
+| File | What's in it | TODOs |
+|---|---|---|
+| `tusb_config.h` | TinyUSB settings: which classes, the stream format, buffer sizes | 1 |
+| `usb_descriptors.h` | interface numbers, entity IDs, endpoint addresses | — |
+| `usb_descriptors.c` | the descriptor tables and the name strings | — |
+| `i2s.pio` | your lab 7 program, unchanged | — |
+| `main.c` | your lab 7 I2S + DMA, TinyUSB callbacks, the audio path | 2–7 |
+
+Find the descriptor tree from Background in `desc_configuration[]` in `usb_descriptors.c`: each `TUD_…` macro is one branch.
+
+**8.2 Build the untouched skeleton.** Pick `08-usb-audio/lab08_usb_audio` when you click Run. The build **stops** with *"TODO 1 (tusb_config.h): fill in the stream format"*, plus a few follow-on warnings. That's on purpose: a sound card with a 0-byte format makes no sense.
+
+**8.3 Part A: the computer finds a sound card** (`PART 0`)
+- TODO 1: the format. All of it can be worked out from Background: the packet layout, and why the host may send one extra frame.
+- Build and flash, with TODO 2 still untouched. Open the serial monitor (the port is still called `usbmodem…`). You should see the banner, `USB: configured by the host`, and some `GET clock …` lines. What does the host get back? What does macOS's **Audio MIDI Setup** app show for *signaldeck USB DAC*?
+- TODO 2: the clock's answers. Flash again. Now Audio MIDI Setup should show **2 ch 24-bit Integer 48.0 kHz**. Write down in Notes the order of the requests you see.
+- Pick *signaldeck USB DAC* as the output in System Settings → Sound, and play something. You won't hear anything: Part A throws the samples away. What do the events say when you press play, and some time after you stop? What happens to the FIFO level, and why does it stop where it stops?
+- **Question:** the volume slider for this device is greyed out. Which descriptor would you have to add to enable it?
+
+**8.4 Part B: play, and watch the clocks drift** (`PART 1`, `FEEDBACK_START 0`)
+- TODO 3: `unpack_slot()`. TODO 4: `fill_from_usb()`. TODO 5: `update_level_avg()`. TODO 6a: `FEEDBACK_NOMINAL`.
+- Check the banner: `feedback 3145728 = 48.00000`.
+- Earbuds in (or speakers), `OUTPUT_SHIFT 4`, the music app's volume low. Play music. It should sound right, and the status line should say `playing`.
+- Now leave a long track or a test tone playing and **don't touch anything**. Write down the FIFO level every 30 s for 3 minutes. Which way does it go, and how fast in frames per second? Turn that into ppm: `ppm = (frames per second) / 48 000 × 10⁶`. Compare it with lab 7's +64 ppm. If you wait long enough, you'll hear a dropout and see `short` (or `overflow`) count up.
+- **Question:** why does `service_audio()` wait for the FIFO to be half full before it starts playing, and go silent until it's half full again after running dry?
+
+**8.5 Part B again: the exact rate isn't enough** (`FEEDBACK_START 1`)
+- TODO 6b: `feedback_from_rate()`. The banner should now show about **3145929 = 48.00307**.
+- Repeat the 3-minute measurement. The drift should be much slower, but probably not zero. Work out the remaining ppm. Where does it come from? (Background: "You can't compute the right value".)
+
+**8.6 Part C: close the loop** (`PART 2`, `FEEDBACK_START 1`)
+- TODO 7: `feedback_control()`.
+- Play for **10 minutes**. The level should settle near `TARGET_FRAMES` (392), a few frames off, and stay there. `short` and `overflow` should stay at **0**.
+- Watch the feedback value in the status line. It should settle a little away from 48.00307. From that, work out the crystal mismatch between your computer and your board in ppm. Does it match what you measured in 8.5?
+- **Question:** predict the steady-state error in frames from your mismatch and `KP`, then compare with what you see.
+
+**8.7 Break it on purpose**
+- **Greedy controller:** set `KP` to 2000. Does the level still settle, or does it swing? Why does a much faster controller get worse, when the FIFO level and the host's reaction both lag behind? Put it back to 8.
+- **Starve TinyUSB:** add `sleep_ms(5);` at the end of the main loop in Part C. What do you hear, and which counters move? Explain it with the "call `tud_task()` often" rule, and with what DMA buffers of 2 ms mean for `late`. Remove it.
+- **Wrong byte order (paper first):** what would you hear if `unpack_slot()` took the bytes the wrong way round, `p[0]` as the most significant? Work out what the quietest positive sample, +1 (bytes `01 00 00`), would become, and how many dB louder that is. Then try it briefly, **speakers only, at a low volume**: no earbuds.
+
+**8.8 Listen**
+- Play music you know well, at a comfortable level. Compare it with the computer's own headphone output. Note what you hear in Notes.
+- **Question:** the whole path from the app to your ear adds some delay. Add up the parts you control: the FIFO at its target, plus the two DMA buffers. How many milliseconds is that?
+
+### Hints (read only if stuck)
+<details><summary>TODO 1: the format</summary>
+
+3 bytes per sample, 24 bits of resolution. The biggest packet is one frame more than the normal 48:
+
+```c
+#define CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX  3
+#define CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX          24
+#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX \
+    ((AUDIO_SAMPLE_RATE_HZ / 1000 + 1) * CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX * CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX)
+```
+(48 + 1) × 2 × 3 = 294 bytes. A `#define` that continues on the next line needs a `\` at the end of the line.
+</details>
+
+<details><summary>TODO 2: the clock's answers</summary>
+
+`.bCur = AUDIO_SAMPLE_RATE_HZ` for the rate. For the range, `.wNumSubRanges = 1`, and the one subrange has `.bMin` and `.bMax` both `AUDIO_SAMPLE_RATE_HZ`, with `.bRes = 0`. For "clock valid", `.bCur = 1`. Untouched, the host is told that the rate is 0 Hz and the clock isn't valid, so it won't use the device.
+</details>
+
+<details><summary>TODO 3: unpack_slot</summary>
+
+```c
+return ((uint32_t)p[2] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[0] << 8);
+```
+</details>
+
+<details><summary>TODO 4: fill_from_usb</summary>
+
+```c
+uint32_t frames = tud_audio_read(bytes, sizeof(bytes)) / BYTES_PER_FRAME;
+for (uint32_t f = 0; f < frames; f++) {
+    const uint8_t *p = &bytes[f * BYTES_PER_FRAME];
+    buf[2 * f]     = attenuate(unpack_slot(p));                     // left
+    buf[2 * f + 1] = attenuate(unpack_slot(p + BYTES_PER_SAMPLE));  // right
+}
+for (uint32_t i = 2 * frames; i < 2 * BUF_FRAMES; i++) buf[i] = 0;
+return frames;
+```
+Delete the `(void)` lines. `p + BYTES_PER_SAMPLE` is a pointer 3 bytes further on: the right sample of the same frame.
+</details>
+
+<details><summary>TODO 5: update_level_avg</summary>
+
+```c
+int32_t step = ((int32_t)(level_frames << 16) - (int32_t)level_avg) / 64;
+level_avg = (uint32_t)((int32_t)level_avg + step);
+```
+</details>
+
+<details><summary>TODO 6: feedback values</summary>
+
+```c
+#define FEEDBACK_NOMINAL    ((uint32_t)(AUDIO_SAMPLE_RATE_HZ / 1000) << 16)
+```
+```c
+return (uint32_t)lround(rate_hz / 1000.0 * 65536.0);
+```
+</details>
+
+<details><summary>TODO 7: feedback_control</summary>
+
+```c
+int32_t error = TARGET_FRAMES - (int32_t)(level_avg >> 16);
+int32_t fb = (int32_t)feedback_base + KP * error;
+int32_t max = (int32_t)(FEEDBACK_NOMINAL + FEEDBACK_RANGE);
+int32_t min = (int32_t)(FEEDBACK_NOMINAL - FEEDBACK_RANGE);
+if (fb > max) fb = max;
+if (fb < min) fb = min;
+return (uint32_t)fb;
+```
+Too empty means a positive error, which makes the feedback bigger: "send me more".
+</details>
+
+### Stretch challenges
+- [ ] **PI controller:** add an integral term, `integral += error` each fill, `feedback += KI × integral` (with KI much smaller than KP, and a limit on `integral`). The steady-state error should go to 0. Why?
+- [ ] **44.1 kHz:** offer 44 100 and 48 000 in the RANGE answer, accept both in `tud_audio_set_req_entity_cb()`, and switch the PIO divider (and the nominal feedback) when the host picks one. 44.1 samples per frame isn't a whole number: what does the host do about the 0.1?
+- [ ] **Windows:** set `CFG_TUD_AUDIO_ENABLE_FEEDBACK_FORMAT_CORRECTION` to 0 and try the board on a Windows PC. Then work out what macOS would make of 16.16 read as 10.14.
+- [ ] **A volume slider:** add a feature unit between the terminals (TinyUSB's `uac2_speaker_fb` example has one), answer its volume and mute requests, and apply the volume in `attenuate()`.
+- [ ] **Promote it:** lab 8 is the device's firmware. Replace the draft in `firmware/rp2040` with it: its own `CMakeLists.txt`, Part C only, no `PART` switch.
+
+### Checks
+- [ ] Untouched skeleton stops at TODO 1, and I know why
+- [ ] With TODO 2 untouched, I saw what the host does when the clock refuses to answer
+- [ ] Audio MIDI Setup shows *signaldeck USB DAC*: 2 ch, 24-bit, 48 kHz
+- [ ] Request order and alt 0/1 switching recorded in Notes
+- [ ] Part B plays music; drift measured with nominal feedback, in frames/s and ppm
+- [ ] Drift measured again with the computed feedback; remaining ppm explained
+- [ ] Part C: 10 minutes, level near 392, 0 short and 0 overflow
+- [ ] Crystal mismatch worked out from the settled feedback value
+- [ ] Can explain why callbacks must not `printf`
+- [ ] Zero warnings in the mode you finish in
+
+### Notes
+*Date:*
+
+*Host and OS (e.g. MacBook, macOS version):*
+
+*Part A: what the host did with TODO 2 untouched; request order once it worked; when alt 1 / alt 0 came:*
+
+*Part B, nominal feedback: level every 30 s, drift in frames/s and ppm:*
+
+| Time | 0:00 | 0:30 | 1:00 | 1:30 | 2:00 | 2:30 | 3:00 |
+|---|---|---|---|---|---|---|---|
+| Level | | | | | | | |
+
+*Part B, computed feedback (48.00307): drift in frames/s and ppm:*
+
+*Part C: settled level, settled feedback, crystal mismatch in ppm, predicted vs seen steady-state error:*
+
+*Break it: KP 2000, sleep_ms(5), wrong byte order:*
+
+*Listening, and the delay you added up:*
+
+*Questions for next time:*
 
 ---
 

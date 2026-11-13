@@ -83,7 +83,7 @@ Only edge pins are used, so there's no need for the bottom pads.
 |---|---|---|
 | GP0–GP7 | R-2R ladder bits 0 (LSB) … 7 (MSB), contiguous so one masked write sets all 8 bits | 5 |
 | GP0 / GP1 / GP2 | I2S BCK / LRCK / DIN to the PCM5102A (BCK and LRCK must be neighbours for PIO side-set) | 7, 8 |
-| GP8 | Second LED for lab C3's police lights, then UART1 TX debug output, for when USB is busy doing audio | C3, 8 |
+| GP8 | Second LED for lab C3's police lights. Free after that: lab 8 keeps `printf` on USB, as a second USB function next to the sound card | C3 |
 | GP14 / GP15 | Audio out L / R: PWM slice 7, channels A / B | 1–4, 6 |
 | GP16 | Onboard WS2812 RGB LED (not on a header) | later |
 | GP26 / GP27 / GP28 | ADC0–2: measure our own DAC outputs ("loopback") | 2+ |
