@@ -33,7 +33,7 @@ _Static_assert(I2S_LRCK_PIN == I2S_BCK_PIN + 1, "LRCK must be the pin right afte
 //   0 = Part A: the PIO at a crawl, read back from our own pins (no DAC needed)
 //   1 = Part B: a stereo sine; the CPU feeds the PIO
 //   2 = Part C: the same sine; DMA feeds the PIO
-#define PART            0
+#define PART            2
 
 // Part A: 2000 instructions per second → BCK = 1 kHz, slow enough for the CPU to watch.
 #define SLOW_PIO_HZ     2000
@@ -212,7 +212,8 @@ static uint32_t inc_l, inc_r;
 static void build_sine_table(void) {
     // TODO 4: gain = 10^(LEVEL_DB / 20), with powf(). Watch out: LEVEL_DB is an int.
     //         Print LEVEL_DB, the gain (5 decimals) and the expected output, 2.1 V rms × gain.
-    float gain = 0.0f;
+    float gain = powf(10.0f, (float)LEVEL_DB / 20.0f);
+    printf("level = %d, gain = %.05f, output = %.02f \n",LEVEL_DB, gain,  2.1*gain);
 
     for (uint32_t n = 0; n < TABLE_SIZE; n++) {
         float angle = 2.0f * (float)M_PI * (float)n / TABLE_SIZE;
@@ -234,17 +235,18 @@ static void start_tones(void) {
 // A signed 24-bit sample → one 32-bit I2S slot: the sample in bits 31…8, zeros in bits 7…0.
 static inline uint32_t to_slot(int32_t sample) {
     // TODO 5: convert to uint32_t FIRST, then shift left by 8.
-    (void)sample;
-    return 0;
+    uint32_t slot = sample;
+    slot = slot <<8u;
+    return slot;
 }
 
 // The next slot for one channel. `phase` points at that channel's phase accumulator.
 static uint32_t next_slot(uint32_t *phase, uint32_t inc) {
     // TODO 6: advance the phase that `phase` points to by inc, look up the table with the
     //         top TABLE_BITS bits, and return the sample as a slot.
-    (void)phase;
-    (void)inc;
-    return 0;
+    *phase += inc;
+    uint32_t index = *phase >> (32u - TABLE_BITS);
+    return to_slot(sine_table[index]);
 }
 #endif
 
@@ -279,6 +281,9 @@ static volatile uint32_t underruns;
 static void fill_buffer(uint32_t *buf) {
     // TODO 7: for each of the BUF_FRAMES frames f: the left slot goes in buf[2f],
     //         the right slot in buf[2f + 1]. Use next_slot().
+    for (uint16_t frame=0; frame < BUF_FRAMES/2; frame++){
+
+    }
     (void)buf;
 }
 
