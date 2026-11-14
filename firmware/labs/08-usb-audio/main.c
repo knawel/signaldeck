@@ -22,7 +22,7 @@
 //   0 = Part A: the computer finds a sound card. The samples it sends are thrown away.
 //   1 = Part B: play them: USB → FIFO → DMA buffers → PIO → DAC, with a fixed feedback value
 //   2 = Part C: the feedback follows the FIFO level, so the FIFO never runs dry or overflows
-#define PART            1
+#define PART            2
 
 // The fixed feedback value Parts B and C start from: 0 = nominal (TODO 6a), 1 = measured (TODO 6b)
 #define FEEDBACK_START  1
@@ -362,7 +362,17 @@ static uint32_t feedback_base;  // where the controller starts from
 //         FEEDBACK_NOMINAL ± FEEDBACK_RANGE.
 //         Which way round? If the FIFO is too empty, we must ask the host for MORE samples.
 static uint32_t feedback_control(void) {
-    return feedback_base;
+    int32_t error = TARGET_FRAMES - (int32_t)level_avg/65536;
+    int32_t feedback_local = (int32_t)feedback_base + KP*error;
+    int32_t feedback_max = (int32_t)FEEDBACK_NOMINAL + (int32_t)FEEDBACK_RANGE;
+    int32_t feedback_min = (int32_t)FEEDBACK_NOMINAL - (int32_t)FEEDBACK_RANGE;
+    if (feedback_local>feedback_max){
+        return feedback_max;
+    }
+    if (feedback_local<feedback_min){
+        return feedback_min;
+    }
+    return feedback_local;
 }
 #endif
 
