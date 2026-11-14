@@ -37,9 +37,9 @@
 //   (c) the biggest packet the host may send in one 1 ms USB frame, in bytes. Normally a
 //       frame carries 48 frames of audio, but the feedback can ask for one more (labbook).
 //       Write it as an expression with the names above, not as a bare number.
-#define CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX  0   // (a)
-#define CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX          0   // (b)
-#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX          0   // (c)
+#define CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX  3      // (a)
+#define CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX          24      // (b)
+#define CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX          (((AUDIO_SAMPLE_RATE_HZ/1000) +1) * CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX * CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX)  // (c)
 
 #if CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX == 0 || CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX == 0 || \
     CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX == 0

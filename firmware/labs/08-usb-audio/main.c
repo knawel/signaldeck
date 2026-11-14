@@ -13,7 +13,8 @@
 #include "hardware/dma.h"
 #include "hardware/irq.h"
 #include "hardware/clocks.h"
-#include "tusb.h"               // TinyUSB: the USB stack
+#include "hardware/structs/usb.h"   // usb_dpram: the USB controller's endpoint registers
+#include "tusb.h"              // TinyUSB: the USB stack
 #include "usb_descriptors.h"
 #include "i2s.pio.h"            // your lab 7 PIO program
 
@@ -21,10 +22,10 @@
 //   0 = Part A: the computer finds a sound card. The samples it sends are thrown away.
 //   1 = Part B: play them: USB → FIFO → DMA buffers → PIO → DAC, with a fixed feedback value
 //   2 = Part C: the feedback follows the FIFO level, so the FIFO never runs dry or overflows
-#define PART            0
+#define PART            1
 
 // The fixed feedback value Parts B and C start from: 0 = nominal (TODO 6a), 1 = measured (TODO 6b)
-#define FEEDBACK_START  0
+#define FEEDBACK_START  1
 
 // Digital attenuation: −6 dB per step. 4 = −24 dB. Earbuds on the module: keep it at 4 or more.
 #define OUTPUT_SHIFT    4
@@ -53,7 +54,7 @@ _Static_assert(I2S_LRCK_PIN == I2S_BCK_PIN + 1, "LRCK must be the pin right afte
 // TODO 6: (a) the nominal value: exactly the number of samples per channel in one 1 ms frame
 //             at AUDIO_SAMPLE_RATE_HZ. Write it with that name, not as a bare number.
 //         (b) feedback_from_rate(), further down.
-#define FEEDBACK_NOMINAL    0u
+#define FEEDBACK_NOMINAL    ((uint32_t)(AUDIO_SAMPLE_RATE_HZ / 1000) << 16)
 #define FEEDBACK_RANGE      (1u << 13)  // Part C may move ±1/8 sample per frame away from nominal
 
 // Part C: feedback units (1/65536 sample per frame) per frame of FIFO error
@@ -219,6 +220,21 @@ bool tud_audio_set_itf_cb(uint8_t rhport, tusb_control_request_t const *p_reques
     return true;
 }
 
+// Workaround for a bug in TinyUSB 0.18 (Pico SDK 2.3.1) on the RP2040. When the host goes
+// back to alt 0, TinyUSB leaves both isochronous endpoints "armed": each still has a buffer
+// marked AVAILABLE, waiting for a packet that never comes. At the next alt 1 it arms them
+// again, finds them already armed, and panics: "ep 01 was already available". TinyUSB calls
+// this function just before it closes the stream, so we disarm both endpoints here by
+// clearing their buffer control registers.
+bool tud_audio_set_itf_close_EP_cb(uint8_t rhport, tusb_control_request_t const *p_request) {
+    (void)rhport;
+    if (tu_u16_low(p_request->wIndex) == ITF_NUM_AUDIO_STREAMING) {
+        usb_dpram->ep_buf_ctrl[tu_edpt_number(EP_AUDIO_OUT)].out = 0;   // the samples
+        usb_dpram->ep_buf_ctrl[tu_edpt_number(EP_AUDIO_FB)].in = 0;     // the feedback
+    }
+    return true;
+}
+
 // We set the feedback value ourselves with tud_audio_fb_set(), so TinyUSB mustn't compute one.
 void tud_audio_feedback_params_cb(uint8_t func_id, uint8_t alt_itf, audio_feedback_params_t *feedback_param) {
     (void)func_id;
@@ -234,21 +250,21 @@ static bool clock_get_request(uint8_t rhport, audio_control_request_t const *req
 
     if (request->bControlSelector == AUDIO_CS_CTRL_SAM_FREQ && request->bRequest == AUDIO_CS_REQ_CUR) {
         // TODO 2a: the current sample rate, in Hz
-        audio_control_cur_4_t rate = { .bCur = 0 };
+        audio_control_cur_4_t rate = { .bCur = AUDIO_SAMPLE_RATE_HZ };
         return tud_audio_buffer_and_schedule_control_xfer(rhport, req, &rate, sizeof(rate));
     }
     if (request->bControlSelector == AUDIO_CS_CTRL_SAM_FREQ && request->bRequest == AUDIO_CS_REQ_RANGE) {
         // TODO 2b: the list of rates we support: one "subrange" from bMin to bMax in steps of bRes.
         //          We support exactly one rate.
         audio_control_range_4_n_t(1) range = {
-            .wNumSubRanges = 0,
-            .subrange[0] = { .bMin = 0, .bMax = 0, .bRes = 0 },
+            .wNumSubRanges = 1,
+            .subrange[0] = { .bMin = AUDIO_SAMPLE_RATE_HZ, .bMax = AUDIO_SAMPLE_RATE_HZ, .bRes = 0 },
         };
         return tud_audio_buffer_and_schedule_control_xfer(rhport, req, &range, sizeof(range));
     }
     if (request->bControlSelector == AUDIO_CS_CTRL_CLK_VALID && request->bRequest == AUDIO_CS_REQ_CUR) {
         // TODO 2c: is the clock running and stable? 1 = yes, 0 = no
-        audio_control_cur_1_t valid = { .bCur = 0 };
+        audio_control_cur_1_t valid = { .bCur = 1};
         return tud_audio_buffer_and_schedule_control_xfer(rhport, req, &valid, sizeof(valid));
     }
     return false;
@@ -285,9 +301,10 @@ bool tud_audio_set_req_entity_cb(uint8_t rhport, tusb_control_request_t const *p
 // One sample on the wire: 3 bytes, least significant first. p points at the first one.
 // Return it as a lab 7 slot: the 24-bit sample in bits 31…8, zeros in bits 7…0.
 static inline uint32_t unpack_slot(const uint8_t *p) {
-    // TODO 3
-    (void)p;
-    return 0;
+    uint32_t one_slot = (uint32_t)p[2]<<24u;
+    one_slot = one_slot | (uint32_t)p[1]<<16u;
+    one_slot = one_slot | (uint32_t)p[0]<<8u;
+    return one_slot;
 }
 
 // −6 dB per step of OUTPUT_SHIFT. Divides the *signed* sample (labbook, C toolbox).
@@ -305,9 +322,20 @@ static uint32_t fill_from_usb(uint32_t *buf) {
     //             each one unpack_slot() then attenuate(). Where in bytes[] does frame f start?
     //         (c) fill the rest of buf with silence (0)
     //         (d) return the number of whole frames
-    (void)bytes;
-    (void)buf;
-    return 0;
+    uint16_t nbytes = tud_audio_read(bytes, sizeof(bytes));
+    uint16_t frames = nbytes / BYTES_PER_FRAME;
+    for (uint16_t f=0; f<frames; f++){
+        int32_t   l_start = (f * BYTES_PER_FRAME);
+        int32_t   r_start = l_start + BYTES_PER_SAMPLE;
+        buf[2*f] = attenuate(unpack_slot(&bytes[l_start]));
+        buf[2*f+1] =  attenuate(unpack_slot(&bytes[r_start]));
+    }
+    for (uint16_t bi=frames; bi<BUF_FRAMES; bi++){
+        buf[2*bi]=0;
+        buf[2*bi+1]=0;
+    }
+
+    return frames;
 }
 
 // The FIFO level, averaged: 16.16 fixed point, in frames.
@@ -316,13 +344,13 @@ static uint32_t level_avg;
 // TODO 5: an exponential moving average: move level_avg 1/64 of the way towards the new
 //         level each call. Careful: the step can be negative.
 static void update_level_avg(uint32_t level_frames) {
-    (void)level_frames;
+    level_avg += ((int32_t)level_frames*65536 - (int32_t)level_avg )/ 64;
+
 }
 
 // TODO 6b: samples per 1 ms frame at rate_hz, in 16.16 fixed point, rounded.
 static uint32_t feedback_from_rate(double rate_hz) {
-    (void)rate_hz;
-    return 0;
+    return (uint32_t)lround(rate_hz / 1000.0 * 65536.0);
 }
 #endif
 

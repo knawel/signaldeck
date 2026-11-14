@@ -36,6 +36,28 @@
             }
         },
         {
+            // Lab 8 brings its own USB descriptors with vendor ID 0xCAFE, and picotool's -f only
+            // looks for Raspberry Pi's vendor ID unless told otherwise. So lab 8 gets its own task:
+            // Terminal → Run Task… → "Run Lab 8".
+            "label": "Run Lab 8",
+            "type": "process",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
+            "args": [
+                "load", "-x",
+                "${workspaceFolder}/build/08-usb-audio/lab08_usb_audio.elf",
+                "-f", "--vid", "0xcafe", "--pid", "0x4008"
+            ],
+            "dependsOn": "Compile Project",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
+            }
+        },
+        {
             "label": "Flash",
             "type": "process",
             "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
