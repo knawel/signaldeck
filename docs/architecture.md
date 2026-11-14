@@ -59,6 +59,10 @@ Initial firmware target:
 - 24-bit / 48 kHz
 - driverless operation where supported by the host OS
 
+Implemented (2026-11-15, `firmware/rp2040`): UAC2 playback at 48 kHz / 24-bit stereo, asynchronous
+with a feedback endpoint, I2S out by PIO + DMA, plus a USB serial port for status output. Works
+driverless on macOS. Windows needs the feedback in 16.16 format instead of 10.14 (untested).
+
 Do not optimize for very high sample rates until the basic audio path is stable.
 
 ## 4. DAC
@@ -74,7 +78,7 @@ Expected digital signals:
 - DATA
 - common GND
 
-The selected module/configuration should not require an external MCLK from the RP2040.
+No external MCLK is needed: SCK is tied to GND and the module derives its clock from BCK (see `pinout.md`).
 
 The DAC output is treated as **line level**. It must not be assumed to be a headphone driver.
 

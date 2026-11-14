@@ -41,6 +41,9 @@ The first firmware milestone is deliberately conservative:
 
 Higher sample rates can be considered after the basic implementation is stable.
 
+**Status (2026-11-15):** this milestone works on the breadboard prototype: the Mac plays through
+`firmware/rp2040` into the PCM5102A. See [`docs/build-log.md`](docs/build-log.md).
+
 ## System overview
 
 ```text
@@ -79,7 +82,8 @@ See [`docs/architecture.md`](docs/architecture.md) for details.
 │   ├── pinout.md
 │   └── build-log.md
 ├── firmware/
-│   └── rp2040/
+│   ├── labs/        learning labs 0–8 with labbooks
+│   └── rp2040/      the device firmware
 ├── hardware/
 │   ├── schematics/
 │   └── pcb/

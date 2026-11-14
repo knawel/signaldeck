@@ -1,20 +1,29 @@
 # Pinout and Interconnects
 
-> **Important:** GPIO numbers are not frozen yet. Verify the exact RP2040-Zero pinout and the selected PCM5102A module before wiring hardware.
+> Breadboard prototype wiring, working since lab 7 (I2S) and lab 8 (USB audio). It may still change for the custom PCB. The firmware's pin numbers are in `firmware/rp2040/src/main.c`.
 
 ## RP2040-Zero -> PCM5102A
 
-Planned logical signals:
-
 | RP2040 function | PCM5102A module | Purpose | GPIO |
 |---|---|---|---|
-| I2S BCLK | BCK / BCLK | Bit clock | TBD |
-| I2S LRCLK | LCK / LRCK / WS | Left/right word clock | TBD |
-| I2S DATA OUT | DIN | PCM audio data | TBD |
+| I2S BCLK | BCK / BCLK | Bit clock, 3.072 MHz | GP0 |
+| I2S LRCLK | LCK / LRCK / WS | Left/right word clock, 48 kHz | GP1 (must be BCLK + 1: PIO side-set) |
+| I2S DATA OUT | DIN | PCM audio data | GP2 |
 | GND | GND | Common reference | GND |
-| Power | VIN / VCC as required by module | DAC supply | TBD after module inspection |
+| Power | VIN / VCC | DAC supply | RP2040-Zero 5V pin, on its own jumper |
 
-MCLK is not planned for the initial configuration if the selected PCM5102A module supports operation without it.
+No MCLK: the module's **SCK is tied to GND**, so the PCM5102A makes its own clock from BCK with its internal PLL.
+
+### PCM5102A configuration pins
+
+| Pin | Level | Meaning |
+|---|---|---|
+| FLT | L (GND) | normal-latency filter |
+| DEMP (DMP) | L (GND) | de-emphasis off |
+| XSMT (XMT) | H (3V3, never 5 V) | soft-mute off. Low = muted |
+| FMT | L (GND) | I2S format (the firmware's PIO program is I2S, not left-justified) |
+
+On modules with a header these come out as pins and must never float. On jumper versions they are solder pads on the back.
 
 ## DAC analog output
 
