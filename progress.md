@@ -20,11 +20,19 @@ Set up the complete build system and firmware skeleton for the RP2040-Zero.
 **Entry point**
 - `src/main.c` — `i2s_init()` → `tusb_init()` → main loop: `tud_task()` + `usb_audio_task()`
 
+## 2026-11-15 — Lab 8 promoted to the main firmware
+
+`firmware/rp2040` now holds lab 8 Part C, replacing the September scaffold (which was never built).
+Plays music from a Mac as a UAC2 sound card: 48 kHz / 24-bit, I2S (not left-justified) to the
+PCM5102A on GP0–2, DMA ping-pong, asynchronous feedback with a P controller on the FIFO level.
+
+- One `main.c` plus `usb_descriptors.c/.h`, `tusb_config.h`, `i2s.pio`; own CMake and VS Code setup
+- Workaround for a TinyUSB 0.18 RP2040 panic on stream restart (`tud_audio_set_itf_close_EP_cb`)
+- Flash with `picotool load -x build/signaldeck.elf -f --vid 0xcafe --pid 0x4008` (the Run task does it)
+- Measured: playback drifts ~300 ppm vs the Mac without the controller; with KP 8 the FIFO settles
+  ~97 frames below target, 0 short / 0 overflow
+
 ## Next
 
-- Install toolchain (`arm-none-eabi-gcc`) and do a test build
-- Confirm PCM5102A module FMT pin / jumper is set to left-justified mode
-- Assign final GPIO pins for BCK / WS / DATA and update `I2S_BCK_PIN` etc. in `i2s_audio.h`
-- Flash and verify USB enumeration (device should appear as audio output in OS)
-- Verify I2S signal on oscilloscope before connecting DAC
-- Add DMA ping-pong to `i2s_audio.c` (current blocking FIFO write is fine for initial testing)
+- Analog volume control (now: −24 dB digital, `OUTPUT_SHIFT`)
+- Optional from lab 8 stretch: PI controller, 44.1 kHz, Windows feedback format

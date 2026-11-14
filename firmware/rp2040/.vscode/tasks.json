@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile Project",
+            "type": "process",
+            "isBuildCommand": true,
+            "command": "${userHome}/.pico-sdk/ninja/v1.13.2/ninja",
+            "args": ["-C", "${workspaceFolder}/build"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": "$gcc",
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.13.2/ninja.exe"
+            }
+        },
+        {
+            // The firmware has its own USB IDs (0xCAFE:0x4008), and picotool's -f only looks for
+            // Raspberry Pi's vendor ID unless told otherwise. If the board runs something else
+            // (a lab), hold BOOT while plugging it in once, then this works from then on.
+            "label": "Run Project",
+            "type": "process",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
+            "args": [
+                "load", "-x",
+                "${workspaceFolder}/build/signaldeck.elf",
+                "-f", "--vid", "0xcafe", "--pid", "0x4008"
+            ],
+            "dependsOn": "Compile Project",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
+            }
+        }
+    ]
+}

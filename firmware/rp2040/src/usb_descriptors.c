@@ -1,173 +1,139 @@
+// signaldeck: the USB descriptors, the tables that tell the computer what this device is.
+//
+// When the board is plugged in, the computer asks for these one by one ("enumeration").
+// TinyUSB answers by calling the tud_descriptor_..._cb() functions below.
+// The TUD_..._DESCRIPTOR() macros come from TinyUSB (usbd.h): each one expands to a list of bytes.
+
+#include <string.h>
 #include "tusb.h"
 #include "pico/unique_id.h"
+#include "pico/usb_reset.h"
+#include "usb_descriptors.h"
 
-// ---------------------------------------------------------------- interface numbers ---
-enum {
-    ITF_NUM_AUDIO_CONTROL = 0,
-    ITF_NUM_AUDIO_STREAMING,
-    ITF_NUM_TOTAL
-};
+// --- device descriptor: the first thing the computer reads ---
 
-// ---------------------------------------------------------------- audio entity IDs ---
-#define CLKSRC_ID       1
-#define INPUT_TERM_ID   2
-#define OUTPUT_TERM_ID  3
-
-// ---------------------------------------------------------------- endpoint addresses --
-#define AUDIO_EP_OUT    0x01    // EP1 OUT (host -> device = playback)
-
-// -------------------------------------------------------------- descriptor lengths ---
-//
-// UAC2 class-specific AC block: clock source + input terminal + output terminal
-#define CS_AC_TOTAL_LEN  (TUD_AUDIO_DESC_CLK_SRC_LEN + \
-                          TUD_AUDIO_DESC_INPUT_TERM_LEN + \
-                          TUD_AUDIO_DESC_OUTPUT_TERM_LEN)
-
-// Full audio portion (matches CFG_TUD_AUDIO_FUNC_1_DESC_LEN in tusb_config.h)
-#define AUDIO_DESC_LEN  (TUD_AUDIO_DESC_IAD_LEN         + \
-                         TUD_AUDIO_DESC_STD_AC_LEN       + \
-                         TUD_AUDIO_DESC_CS_AC_LEN        + \
-                         CS_AC_TOTAL_LEN                 + \
-                         TUD_AUDIO_DESC_STD_AS_INT_LEN   + \
-                         TUD_AUDIO_DESC_STD_AS_INT_LEN   + \
-                         TUD_AUDIO_DESC_CS_AS_INT_LEN    + \
-                         TUD_AUDIO_DESC_TYPE_I_FORMAT_LEN + \
-                         TUD_AUDIO_DESC_STD_AS_ISO_EP_LEN + \
-                         TUD_AUDIO_DESC_CS_AS_ISO_EP_LEN)
-
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN)
-
-// ---------------------------------------------------------------- device descriptor --
-tusb_desc_device_t const desc_device = {
+static const tusb_desc_device_t desc_device = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
-    .bcdUSB             = 0x0200,
-    // IAD requires Miscellaneous Device class at device level
+    .bcdUSB             = 0x0200,               // USB 2.0
+    // Several functions (audio, serial) each grouped by an IAD: the device class must say so.
     .bDeviceClass       = TUSB_CLASS_MISC,
     .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
     .bDeviceProtocol    = MISC_PROTOCOL_IAD,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor           = 0x6666,   // placeholder; replace with registered VID
-    .idProduct          = 0x0001,
-    .bcdDevice          = 0x0100,
-    .iManufacturer      = 0x01,
-    .iProduct           = 0x02,
-    .iSerialNumber      = 0x03,
-    .bNumConfigurations = 0x01
+    .idVendor           = 0xCAFE,               // TinyUSB's test vendor ID: fine on your own desk only
+    .idProduct          = 0x4008,               // kept from lab 8: the flash task passes --vid 0xcafe --pid 0x4008
+    .bcdDevice          = 0x0100,               // device version 1.00
+    .iManufacturer      = 1,                    // indexes into string_desc[] below
+    .iProduct           = 2,
+    .iSerialNumber      = 3,
+    .bNumConfigurations = 1,
 };
 
 uint8_t const *tud_descriptor_device_cb(void) {
     return (uint8_t const *)&desc_device;
 }
 
-// --------------------------------------------------------------- config descriptor ---
-uint8_t const desc_configuration[] = {
-    // Standard configuration descriptor
-    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN,
-                          TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
+// --- configuration descriptor: every interface and endpoint, in one long byte array ---
 
-    // Interface Association: AudioControl + 1 AudioStreaming
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + AUDIO_DESC_LEN + TUD_CDC_DESC_LEN + TUD_RPI_RESET_DESC_LEN)
+
+static const uint8_t desc_configuration[] = {
+    // Config number, interface count, string index, total length, attributes, max current in mA
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
+
+    // ===== The audio function (UAC2) =====
+    // IAD: "the next 2 interfaces belong together"
     TUD_AUDIO_DESC_IAD(ITF_NUM_AUDIO_CONTROL, 2, 0),
+    // AudioControl interface: no endpoints of its own, only the class-specific blocks below
+    TUD_AUDIO_DESC_STD_AC(ITF_NUM_AUDIO_CONTROL, 0, 2),
+    TUD_AUDIO_DESC_CS_AC(0x0200, AUDIO_FUNC_DESKTOP_SPEAKER, AUDIO_CS_AC_LEN, 0),
+    // Clock source: an internal clock with a fixed rate. The host may read the rate and
+    // whether the clock is valid (both "R", read-only), but can't change them.
+    TUD_AUDIO_DESC_CLK_SRC(UAC2_ENTITY_CLOCK, AUDIO_CLOCK_SOURCE_ATT_INT_FIX_CLK,
+                           (AUDIO_CTRL_R << AUDIO_CLOCK_SOURCE_CTRL_CLK_FRQ_POS) |
+                           (AUDIO_CTRL_R << AUDIO_CLOCK_SOURCE_CTRL_CLK_VAL_POS),
+                           0, 0),
+    // Input terminal: where the samples enter the function, the USB stream, 2 channels
+    TUD_AUDIO_DESC_INPUT_TERM(UAC2_ENTITY_INPUT_TERMINAL, AUDIO_TERM_TYPE_USB_STREAMING,
+                              0, UAC2_ENTITY_CLOCK, CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX,
+                              AUDIO_CHANNEL_CONFIG_FRONT_LEFT | AUDIO_CHANNEL_CONFIG_FRONT_RIGHT,
+                              0, 0, 0),
+    // Output terminal: where they leave it, headphones, fed straight from the input terminal
+    TUD_AUDIO_DESC_OUTPUT_TERM(UAC2_ENTITY_OUTPUT_TERMINAL, AUDIO_TERM_TYPE_OUT_HEADPHONES,
+                               0, UAC2_ENTITY_INPUT_TERMINAL, UAC2_ENTITY_CLOCK, 0, 0),
 
-    // Standard AudioControl interface (0 endpoints)
-    TUD_AUDIO_DESC_STD_AC(ITF_NUM_AUDIO_CONTROL, 0, 0),
-
-    // Class-specific AC header: UAC2, desktop speaker, CS-AC block length
-    TUD_AUDIO_DESC_CS_AC(0x0200, AUDIO_FUNC_DESKTOP_SPEAKER, CS_AC_TOTAL_LEN,
-                         AUDIO_CS_AS_INTERFACE_CTRL_LATENCY_POS),
-
-    // Clock source: internal fixed frequency
-    TUD_AUDIO_DESC_CLK_SRC(CLKSRC_ID,
-                            AUDIO_CLOCK_SOURCE_ATT_INT_FIX_CLK,
-                            (AUDIO_CTRL_R << AUDIO_CLOCK_SOURCE_CTRL_CLK_FRQ_POS),
-                            0x00, 0),
-
-    // Input terminal: USB streaming -> 2 ch stereo
-    TUD_AUDIO_DESC_INPUT_TERM(INPUT_TERM_ID, AUDIO_TERM_TYPE_USB_STREAMING,
-                              0x00, CLKSRC_ID, 2,
-                              AUDIO_CHANNEL_CONFIG_FRONT_LEFT |
-                              AUDIO_CHANNEL_CONFIG_FRONT_RIGHT,
-                              0, AUDIO_CTRL_NONE, 0),
-
-    // Output terminal: headphones
-    TUD_AUDIO_DESC_OUTPUT_TERM(OUTPUT_TERM_ID, AUDIO_TERM_TYPE_OUT_HEADPHONES,
-                               0x00, INPUT_TERM_ID, CLKSRC_ID,
-                               AUDIO_CTRL_NONE, 0),
-
-    // AudioStreaming interface: alt 0 — zero bandwidth (required)
+    // AudioStreaming interface, alternate setting 0: no endpoints, no bandwidth. The host
+    // picks this one when nothing is playing.
     TUD_AUDIO_DESC_STD_AS_INT(ITF_NUM_AUDIO_STREAMING, 0, 0, 0),
+    // Alternate setting 1: streaming, with 2 endpoints (samples in, feedback out)
+    TUD_AUDIO_DESC_STD_AS_INT(ITF_NUM_AUDIO_STREAMING, 1, 2, 0),
+    TUD_AUDIO_DESC_CS_AS_INT(UAC2_ENTITY_INPUT_TERMINAL, AUDIO_CTRL_NONE, AUDIO_FORMAT_TYPE_I,
+                             AUDIO_DATA_FORMAT_TYPE_I_PCM, CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX,
+                             AUDIO_CHANNEL_CONFIG_FRONT_LEFT | AUDIO_CHANNEL_CONFIG_FRONT_RIGHT, 0),
+    // The sample format: 3-byte subslots, 24 bits used (tusb_config.h)
+    TUD_AUDIO_DESC_TYPE_I_FORMAT(CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX,
+                                 CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX),
+    // The samples: isochronous, asynchronous (we run on our own clock), one packet per 1 ms frame.
+    TUD_AUDIO_DESC_STD_AS_ISO_EP(EP_AUDIO_OUT,
+                                 (uint8_t)(TUSB_XFER_ISOCHRONOUS | TUSB_ISO_EP_ATT_ASYNCHRONOUS |
+                                           TUSB_ISO_EP_ATT_DATA),
+                                 CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX, 1),
+    TUD_AUDIO_DESC_CS_AS_ISO_EP(AUDIO_CS_AS_ISO_DATA_EP_ATT_NON_MAX_PACKETS_OK, AUDIO_CTRL_NONE,
+                                AUDIO_CS_AS_ISO_DATA_EP_LOCK_DELAY_UNIT_UNDEFINED, 0),
+    // The feedback: 4 bytes, sent every 1 ms frame
+    TUD_AUDIO_DESC_STD_AS_ISO_FB_EP(EP_AUDIO_FB, 4, 1),
 
-    // AudioStreaming interface: alt 1 — operational (1 isochronous endpoint)
-    TUD_AUDIO_DESC_STD_AS_INT(ITF_NUM_AUDIO_STREAMING, 1, 1, 0),
+    // ===== The serial port (CDC), for printf =====
+    // Interface number, string index, notification endpoint + size, data out, data in, size
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EP_CDC_NOTIF, 8, EP_CDC_OUT, EP_CDC_IN, 64),
 
-    // Class-specific AS: terminal link, PCM format, stereo
-    TUD_AUDIO_DESC_CS_AS_INT(INPUT_TERM_ID, AUDIO_CTRL_NONE,
-                             AUDIO_FORMAT_TYPE_I, AUDIO_DATA_FORMAT_TYPE_I_PCM,
-                             2,
-                             AUDIO_CHANNEL_CONFIG_FRONT_LEFT |
-                             AUDIO_CHANNEL_CONFIG_FRONT_RIGHT,
-                             0),
-
-    // Type I format: 3 bytes/subslot, 24-bit resolution
-    TUD_AUDIO_DESC_TYPE_I_FORMAT(3, 24),
-
-    // Isochronous OUT endpoint: async, 294 bytes max, 1ms interval
-    TUD_AUDIO_DESC_STD_AS_ISO_EP(
-        AUDIO_EP_OUT,
-        (TUSB_XFER_ISOCHRONOUS | TUSB_ISO_EP_ATT_ASYNCHRONOUS | TUSB_ISO_EP_ATT_DATA),
-        CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_MAX, 1),
-
-    // Class-specific endpoint
-    TUD_AUDIO_DESC_CS_AS_ISO_EP(
-        AUDIO_CS_AS_ISO_DATA_EP_ATT_NON_MAX_PACKETS_OK,
-        AUDIO_CTRL_NONE,
-        AUDIO_CS_AS_ISO_DATA_EP_LOCKDELAY_UNIT_UNDEFINED, 0x0000),
+    // ===== The picotool reset interface =====
+    TUD_RPI_RESET_DESCRIPTOR(ITF_NUM_RESET, 5),
 };
 
+// The compiler counts the bytes; stop the build if the hand-written total disagrees.
+_Static_assert(sizeof(desc_configuration) == CONFIG_TOTAL_LEN, "CONFIG_TOTAL_LEN is wrong");
+
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
-    (void)index;
+    (void)index;    // we only have one configuration
     return desc_configuration;
 }
 
-// ---------------------------------------------------------------- string descriptors -
-static char serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];
+// --- string descriptors: the names the computer shows ---
 
-static char const *string_desc_arr[] = {
-    (const char[]){0x09, 0x04},    // 0: English (0x0409)
-    "Signaldeck",                   // 1: manufacturer
-    "USB Headphone Interface",      // 2: product
-    serial_str,                     // 3: serial (filled at runtime)
+static char serial[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];   // filled from the flash chip's unique ID
+
+static const char *string_desc[] = {
+    NULL,                   // 0: the language list, handled separately below
+    "signaldeck",           // 1: manufacturer
+    "signaldeck USB DAC",   // 2: product: the name in your Sound settings
+    serial,                 // 3: serial number
+    "signaldeck serial",    // 4: the CDC interface
+    "Reset",                // 5: the picotool reset interface
 };
 
-static uint16_t desc_str[32];
+#define STRING_COUNT (sizeof(string_desc) / sizeof(string_desc[0]))
+
+static uint16_t desc_str[32];   // USB strings are UTF-16: 2 bytes per character
 
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     (void)langid;
+    size_t chars;
 
-    if (index == 3 && serial_str[0] == '\0') {
-        pico_unique_board_id_t uid;
-        pico_get_unique_board_id(&uid);
-        for (int i = 0; i < PICO_UNIQUE_BOARD_ID_SIZE_BYTES; i++) {
-            snprintf(serial_str + 2 * i, 3, "%02X", uid.id[i]);
-        }
-    }
-
-    uint8_t chr_count;
     if (index == 0) {
-        memcpy(&desc_str[1], string_desc_arr[0], 2);
-        chr_count = 1;
+        desc_str[1] = 0x0409;   // the only language we offer: English (US)
+        chars = 1;
     } else {
-        if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0])) {
-            return NULL;
-        }
-        const char *str = string_desc_arr[index];
-        chr_count = (uint8_t)strlen(str);
-        if (chr_count > 31) chr_count = 31;
-        for (uint8_t i = 0; i < chr_count; i++) {
-            desc_str[1 + i] = str[i];
-        }
+        if (index >= STRING_COUNT) return NULL;
+        if (index == 3) pico_get_unique_board_id_string(serial, sizeof(serial));
+        const char *str = string_desc[index];
+        chars = strlen(str);
+        if (chars > 31) chars = 31;
+        for (size_t i = 0; i < chars; i++) desc_str[1 + i] = (uint16_t)str[i];    // ASCII → UTF-16
     }
 
-    desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * chr_count + 2));
+    // First element: the descriptor type in the high byte, the total length in bytes in the low byte
+    desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * chars + 2));
     return desc_str;
 }
