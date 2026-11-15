@@ -102,7 +102,10 @@ Rough readings from the status line:
 
 ## Milestone 2 - Headphone amplifier stage 1 (NJM4556A) + power sequencing
 
-**Status:** Not started (lab 9: amplifier; lab 10: switched rail, mute, sequencing)
+Work folder: `hardware/amp-stage1/`
+
+**Status:** Not started. Part A: amplifier on the breadboard. Part B: soft-start rail, mute relay,
+`amp_on()`/`amp_off()` sequencing, measured power budget.
 
 Planned tests (multimeter, dummy loads 33 Ω / 82 Ω, then headphones):
 
@@ -117,7 +120,48 @@ Planned tests (multimeter, dummy loads 33 Ω / 82 Ω, then headphones):
 
 ---
 
-## Milestone 3 - Volume + analog meters
+## Milestone 3 - Enclosure mockup (3D printed)
+
+Work folder: `mechanical/enclosure/`
+
+**Status:** Not started
+
+Goal: a basic printed enclosure to try the placement of boards, knob, sockets, toggle and meters
+before the amp PCB fixes its outline. Detailed concept in `enclosure.md`.
+
+Planned work:
+
+- measure the real parts: jacks, encoder + knob, toggle, RP2040-Zero, DAC module, stage 1 amp
+- meters as dummy blocks until a model is chosen
+- place both front subpanels, the USB-C on the rear, the internal boards and wiring paths
+- derive the amp PCB outline, mounting holes and connector position for M4
+- record the dimensions that change the PCB or the final enclosure
+
+---
+
+## Milestone 4 - Amplifier stage 2 PCB (OPA1622 + LM27762), hw P2
+
+Work folder: `hardware/kicad/amp-p2/`
+
+**Status:** Not started
+
+Design and order a small amp board based on TI TIDA-01341, built to be debugged and adjusted:
+
+- current-measurement jumpers on each rail; a jumper separating supply and amplifier
+- LM27762 output voltage set by resistor footprints (±4.0/4.5/5 V); gain set by footprints (1 to ~3)
+- optional footprints: input capacitors, output series resistor, feedback capacitor, ferrite (0 Ω bypass)
+- test points on rails, power-good, enables, inputs, outputs and ground (with scope ground spots)
+- enable/shutdown pins on a header with default pulls; footprint for a level shifter if needed
+- the 8-pin amp-module connector from `pinout.md`; mounting holes from M3; revision on silkscreen
+- before ordering: OPA1622 enable-pin logic check, schematic review, assembly-service stock check
+
+Planned tests: the M2 test list again, plus rails within tolerance, and power-good and shutdown behavior.
+
+---
+
+## Milestone 5 - Volume + analog meters
+
+Work folder: `firmware/rp2040/` (meter driver hardware: `hardware/`)
 
 **Status:** Not started
 
@@ -133,7 +177,7 @@ Planned tests:
 
 ---
 
-## Milestone 4 - Mechanical prototype
+## Milestone 6 - Final mechanical design
 
 **Status:** Not started
 

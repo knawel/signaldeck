@@ -89,8 +89,8 @@ of it sits behind the soft-start switch because USB allows only about 10 µF dir
 
 ## Open items
 
-1. Lab 9 schematic for stage 1 (values, connector).
-2. Soft-start switch part and power budget (lab 10); then raise `bMaxPower`.
+1. M2 schematic for stage 1 (values, connector).
+2. Soft-start switch part and power budget (M2 Part B); then raise `bMaxPower`.
 3. Encoder part (detented vs smooth, no push switch) and the Feature Unit firmware. Mute button later.
 4. Line output: yes/no.
 5. Meter movements and lamps.

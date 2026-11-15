@@ -32,7 +32,7 @@ This BOM is for the **prototype**, not the final production-quality device.
 ## B2. Headphone amplifier, stage 1 (NJM4556A, breadboard)
 
 Preliminary list (resistors not listed), from the agreed design (`architecture.md`, section 6).
-Values are typical starting points; the lab 9 schematic is the final word.
+Values are typical starting points; the M2 schematic in `hardware/amp-stage1/` is the final word.
 
 | Item | Qty | Specification / notes |
 |---|---:|---|

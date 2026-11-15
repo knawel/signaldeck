@@ -51,7 +51,13 @@ PCM5102A on GP0–2, DMA ping-pong, asynchronous feedback with a P controller on
 
 ## Next
 
-- Lab 9: NJM4556A stage 1 on the breadboard, multimeter checks
-- Lab 10: soft-start audio rail, mute relay, power sequencing, measured power budget
-- Then: encoder + firmware volume + Feature Unit; meters
+Project work is organised as milestones (M2–M6 in `docs/build-log.md`), filed by subsystem; labs 0–8
+in `firmware/labs/` were the learning series.
+
+
+- M2: NJM4556A stage 1 on the breadboard (Part A), soft-start rail + mute relay + sequencing (Part B);
+  guide in `hardware/amp-stage1/README.md`
+- M3: basic 3D-printed enclosure mockup for placing boards, knob, sockets
+- M4: OPA1622 + LM27762 amp PCB (hw P2), based on TIDA-01341, built for debugging and adjustment
+- M5: encoder + firmware volume + Feature Unit; meters
 - Optional from lab 8 stretch: PI controller, 44.1 kHz, Windows feedback format
