@@ -1,111 +1,106 @@
-# Analog expansion — discussion notes
+# Analog section — background and analysis
 
-Updated: 2026-11-15. **Analysis only: no amplifier, supply, circuit, meter or shopping list has been approved.**
-These notes capture the current discussion; they do not replace the existing architecture,
-pinout, BOM or decision log. Older planning choices in those documents remain unchanged.
+Updated: 2026-11-15. The decisions themselves live in `decisions.md` and `architecture.md`; this file
+keeps the reasoning and numbers behind them.
 
-## Working baseline
+## Working baseline (hardware P1, firmware 0.1.0)
 
 - RP2040-Zero -> I2S -> PCM5102A module; macOS identifies “signaldeck USB DAC”.
-- Playback works, with 24-bit/48kHz stereo, PIO/DMA and asynchronous USB feedback.
+- 24-bit/48kHz stereo, PIO/DMA, asynchronous USB feedback.
 - GP0 = BCK, GP1 = LRCK, GP2 = DIN. SCK/FLT/DEMP/FMT grounded; XSMT at 3V3.
 - The module's VIN is powered from the board 5V pin; this is not the bare DAC's supply pin.
-- Firmware applies fixed attenuation using `OUTPUT_SHIFT=4` (approximately -24dB).
-- Variable volume, encoder input, meter processing and analog power sequencing are not implemented.
-- USB configuration currently declares 100mA. Additional hardware requires a measured power
-  budget and an appropriate USB power declaration/enable sequence.
+- Fixed attenuation `OUTPUT_SHIFT=4` (about −24 dB). No volume control, OS slider greyed out.
+- USB configuration declares 100 mA.
 
-## Goals and preferences under discussion
+## Requirements (decided 2026-11-15)
 
-- Headphone output for ATH-M40x (35 ohms), DT770 Pro (80 ohms) and generic PC headphones.
-- **Decided 2026-11-15:** rated for 32 ohms and above; accidental 16-ohm connection tolerated
-  at reduced output (no damage). Full 16-ohm drive is not a requirement.
-- Separate line output for active PC speakers, which have their own amplifier.
-- Prefer an endless rotary encoder with push-to-mute and firmware volume; avoid fixed
-  MIN/MAX position markings. Detailed control behavior is undecided.
-- Two warm-lit physical needle meters, with levels calculated from PCM before local volume
-  control and smooth VU-like movement. Exact movements and driver circuit remain undecided.
-- Aim for USB power and an external, mechanically separate USB connector.
-- Complete the electronics before enclosure/custom PCB design.
-- User does not have an oscilloscope; assembly and verification effort must influence selection.
+- Headphones: ATH-M40x (35 Ω), DT770 Pro (80 Ω), generic PC headphones. Rated for 32 Ω and above;
+  accidental 16 Ω tolerated at reduced output, no damage.
+- USB power only; complete the electronics before the enclosure/custom PCB.
+- No oscilloscope: verification by multimeter, dummy loads and listening (see below).
 
-## Amplifier options
+## How much output is needed
 
-| Option | Reasons to consider it | Unresolved issues |
-|---|---|---|
-| NJM4556A DIP-8 | Easy to handle and solder; suitable for a hands-on analog build | Supply topology, gain, clean output into 32/80 ohms, overload behavior, noise and startup transients |
-| MAX97220A | Single 5V input with internal negative-rail charge pump; published 16-ohm measurements | Tiny IC package; an affordable, documented assembled module has not been established |
-| Other assembled headphone module | Could reduce layout and verification uncertainty | Must check schematic, supply, gain, output impedance and headphone-load ratings |
+The PCM5102A gives about 2.1 Vrms at full scale. Approximate sensitivities (not datasheet-checked),
+for 110 dB SPL peaks:
 
-MAX97220A was investigated for power-supply convenience, not a demonstrated sound-quality
-advantage over NJM4556A. The documented MAX97220AEVKIT+ listing showed about EUR94;
-that makes it an expensive reference option, not a purchase recommendation.
+| Headphone | Power | Voltage | Current |
+|---|---:|---:|---:|
+| ATH-M40x, 35 Ω, ~98 dB/mW | ~16 mW | ~0.75 Vrms | ~21 mA |
+| DT770 Pro 80 Ω, ~96 dB/mW | ~25 mW | ~1.4 Vrms | ~18 mA |
 
-NJM4556A's advertised 70mA output drive is not a guarantee of clean operation into every
-headphone load. Lower impedance increases current demand at the same voltage:
+So the DAC already has enough voltage; the amplifier is a **gain-1 current buffer**. The fixed −24 dB
+today (about 0.13 Vrms) is already loud enough for normal listening.
+
+Current demand by load (Ohm's law, not amplifier performance):
 
 | Output | 32-ohm load | 16-ohm load |
 |---|---:|---:|
 | 1Vrms | 31mA RMS / 44mA peak | 63mA RMS / 88mA peak |
 | 2Vrms | 63mA RMS / 88mA peak | 125mA RMS / 177mA peak |
 
-These are Ohm's-law calculations, not amplifier performance predictions. A possible requirement
-is clean rated output into 32 ohms and above, with no damage from accidental 16-ohm operation.
-At high levels the lower load may cause clipping, heating or current limiting. Harmless overload
-must be verified for the complete circuit; it cannot be assumed from the chip name.
+## Amplifier: why two stages
 
-## NJM4556A supply and build effort
+| | Stage 1: NJM4556A, single 5 V | Stage 2: OPA1622 + LM27762 |
+|---|---|---|
+| Supply | VBUS through ferrite + bulk capacitor | LM27762: ±1.5 to ±5 V adjustable (≈ ±4.5 V on USB), 250 mA per rail, 2 MHz charge pump + LDOs |
+| Output | Capacitor-coupled, about 1 Vrms max | Ground-referenced, about 2 Vrms (swing vs load still to check) |
+| Drive | 70 mA advertised | +145 / −130 mA; −119 dB THD+N at 100 mW into 32 Ω |
+| Pop control | Mute relay | OPA1622 shutdown pin (designed to avoid clicks), LM27762 enables + power-good |
+| Packages | DIP-8, hand-built | VSON-10 3×3 mm, WSON-12 3×2 mm: PCB with assembly or hot plate |
+| Cost / time | ~€5–10, a weekend | ~€40–80 including a board order, ~4–6 weeks; each respin ~€30–60 and 2–3 weeks |
 
-The amplifier circuit is relatively straightforward; a quiet USB-derived supply and reliable
-startup behavior add difficulty. Two approaches remain open:
+Stage 1 is the learning build and gives working hardware for the sequencing and volume firmware;
+stage 2 (TI TIDA-01341 as the layout reference) is the target amplifier. MAX97220A and ready-made
+modules were considered and dropped. Open check for stage 2: the OPA1622 enable-pin logic reference.
 
-- A ready-made regulated bipolar converter, with approximately +/-5V as a starting point to
-  investigate. Check output current, ripple, light-load regulation, filtering and USB input draw.
-- A single-supply biased circuit, which requires a suitable signal reference and headphone
-  output coupling capacitors. A simple resistor divider is not a headphone return-current sink.
+16 Ω on stage 2: about 350 mA peak per rail at 2 Vrms on both channels exceeds the LM27762's
+250 mA, so its current limit clips — acceptable as "reduced output", or capped in firmware.
 
-Neither supply approach nor any converter model has been selected. There is no approved
-NJM4556A schematic or component-value list in this analysis.
+## Supply bulk capacitance
 
-A multimeter and dummy loads can check rails, DC offset, supply current and approximate output
-voltage where the meter's AC bandwidth permits. They cannot establish absence of ultrasonic
-oscillation or reliably capture clipping/startup spikes. Borrowing a scope for final checks would
-make a custom build easier to assess. An assembled module reduces assembly uncertainty but
-still needs sensible power, wiring and load checks.
+A large capacitor steadies the rail and keeps amp current pulses off the 5 V shared with the RP2040
+and DAC; it does not supply the average power (USB has plenty). Holding a 100 mA, 12.5 ms bass
+half-cycle within 0.1 V would take ~12,500 µF; a 1 ms spike needs ~1000 µF. Hence 470–1000 µF for
+stage 1, ~100 µF before the LM27762 for stage 2, never large capacitors on the LDO outputs. All
+of it sits behind the soft-start switch because USB allows only about 10 µF directly on VBUS.
 
-## Controls, outputs and meters: consequences to retain
+## Verifying without an oscilloscope
 
-- Digital volume before a single PCM5102A changes both its line and headphone outputs.
-  Independent fixed-level line output needs a different headphone-volume arrangement or
-  a separate DAC path. Desired line-output behavior has not been confirmed.
-- Pre-volume PCM metering can remain active during local mute. Host/app volume is already
-  reflected in received samples; the device cannot recover the original source level.
-- The sample tap can be placed before `attenuate()` in `fill_from_usb()`. Meter smoothing and
-  PWM updates should not block USB/DMA servicing. No new GPIO assignments are reserved.
-- Select meter movements only with documented full-scale current, coil resistance and
-  illumination voltage/current. Backlights may use much more power than the movements.
-- Filtered PWM with an op-amp/transistor current driver is a possible approach. LM358 could
-  serve in this low-frequency control role; it is not the proposed headphone output stage.
-- No meter model, lighting converter, driver values, socket-priority wiring or LOW/HIGH
-  range switch is selected. The previous detailed circuit and 445mA budget were provisional
-  and have been removed rather than retained as established design facts.
-- A short panel-mount USB data harness may avoid desoldering the RP2040 connector. Exact
-  connector/harness choice, power distribution and any power switching remain to be designed.
+- **Oscillation:** idle supply current far above the datasheet value, a warm chip, or readings that
+  change when wires are touched. The most useful check.
+- **DC offset:** multimeter DC across the load.
+- **Clipping:** step a 1 kHz (or 400 Hz, depending on the meter's AC bandwidth) tone up 1 dB at a
+  time; the AC reading stops following.
+- **Thumps, hum, hiss:** listen, cheap headphones first.
+- Breadboards invite oscillation: 100 nF at the pins, short feedback/output wires, a few ohms in
+  series with each output. Borrowing a scope for final checks is still worthwhile.
 
-## Next decisions
+## Volume, line output, meters
 
-1. Confirm the rated headphone-load range and desired output level.
-2. Choose custom NJM4556A versus a documented assembled amplifier, considering cost and
-   available measurement equipment.
-3. Choose the supply with that amplifier; then develop one reviewable schematic and power budget.
-4. Resolve shared versus independent line/headphone volume; select meter hardware afterward.
-5. Update architecture, pinout and BOM only when the relevant choices are agreed.
+- Volume is firmware gain (knob × host Feature Unit), so everything after the DAC follows it,
+  including a future line output. A fixed-level line output would need analog volume or a second
+  DAC; not planned. Line output itself is TBD.
+- Meter levels come from the samples before the knob gain (tap before `attenuate()` in
+  `fill_from_usb()`); host volume is already in the samples and can't be undone. Smoothing and PWM
+  updates must not block USB/DMA servicing.
+- Meter movements: select only with documented full-scale current, coil resistance and lamp
+  voltage/current. LM358 is adequate as the PWM → current driver.
 
-## Reference material already consulted
+## Open items
+
+1. Lab 9 schematic for stage 1 (values, connector).
+2. Soft-start switch part and power budget (lab 10); then raise `bMaxPower`.
+3. Encoder part (detented vs smooth, no push switch) and the Feature Unit firmware. Mute button later.
+4. Line output: yes/no.
+5. Meter movements and lamps.
+6. Stage 2 schematic after reading TIDA-01341 and both datasheets.
+
+## Reference material
 
 - [NJM4556A manufacturer specifications](https://www.nisshinbo-microdevices.co.jp/en/products/operational-amplifier/spec/?product=njm4556a)
-- [MAX97220A-E datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX97220A-MAX97220E.pdf)
-- [MAX97220A evaluation-board documentation](https://www.analog.com/media/en/technical-documentation/data-sheets/max97220aevkit.pdf)
+- [OPA1622 product page](https://www.ti.com/product/OPA1622)
+- [LM27762 product page](https://www.ti.com/product/LM27762)
+- TI reference design TIDA-01341, "Hi-Fi Headphone Amplifier Power Supply"
+- [MAX97220A-E datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX97220A-MAX97220E.pdf) (considered, dropped)
 - [PCM5102A datasheet](https://www.ti.com/lit/ds/symlink/pcm5102a.pdf)
-
-No firmware, physical wiring or purchases changed during this analysis.

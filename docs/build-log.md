@@ -40,8 +40,8 @@ Computer -> USB-C -> RP2040-Zero -> I2S -> PCM5102A -> line output
 
 **Status:** Working (playback); some tests still open  
 **Date:** 2026-11-15  
-**Hardware revision:** Prototype / breadboard  
-**Firmware commit:** 65770cd (`firmware/rp2040`, promoted from lab 8 Part C)
+**Hardware revision:** P1 (breadboard)  
+**Firmware:** 0.1.0, tag `fw/v0.1.0` (`firmware/rp2040`, promoted from lab 8 Part C in 65770cd)
 
 ### Wiring
 
@@ -95,37 +95,39 @@ Rough readings from the status line:
 
 ### Changes for next revision
 
-- analog volume control, then retire the −24 dB digital attenuation
+- firmware volume (encoder + UAC2 Feature Unit), then retire the fixed −24 dB attenuation
 - optional: PI controller (removes the steady FIFO offset), 44.1 kHz, Windows feedback format
 
 ---
 
-## Milestone 2 - Volume + headphone amplifier
+## Milestone 2 - Headphone amplifier stage 1 (NJM4556A) + power sequencing
 
-**Status:** Not started
+**Status:** Not started (lab 9: amplifier; lab 10: switched rail, mute, sequencing)
 
-Planned tests:
+Planned tests (multimeter, dummy loads 33 Ω / 82 Ω, then headphones):
 
-- [ ] volume range
-- [ ] channel tracking
-- [ ] noise/hum at minimum and normal volume
-- [ ] startup/shutdown transient behavior
-- [ ] 3.5 mm output
-- [ ] 6.35 mm output
-- [ ] representative low-impedance headphone load
+- [ ] idle supply current near the datasheet value, chip cool (no oscillation)
+- [ ] DC offset across the load
+- [ ] output level vs digital level at 1 kHz (or 400 Hz): where clipping starts
+- [ ] no hum/hiss audible at maximum with nothing playing
+- [ ] no thump at power-up/down and USB plug/unplug
+- [ ] 3.5 mm and 6.35 mm outputs
+- [ ] 16 Ω accidental load: reduced output, no damage
+- [ ] measured power budget → USB `bMaxPower`
 
 ---
 
-## Milestone 3 - Analog meters
+## Milestone 3 - Volume + analog meters
 
 **Status:** Not started
 
 Planned tests:
 
-- [ ] high-impedance tap does not affect audio
-- [ ] LEFT/RIGHT independence
-- [ ] useful attack behavior
-- [ ] useful decay behavior
+- [ ] encoder: 1 dB steps, no missed or reversed steps
+- [ ] OS volume slider works (UAC2 Feature Unit), independent of the knob
+- [ ] no clicks when the volume changes
+- [ ] meter levels independent of the knob, LEFT/RIGHT independence
+- [ ] useful attack and decay behavior
 - [ ] calibration repeatability
 - [ ] meter illumination power/noise
 

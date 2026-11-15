@@ -40,7 +40,18 @@ PCM5102A on GP0–2, DMA ping-pong, asynchronous feedback with a P controller on
 - Tags `fw/v0.1.0` and `hw/P1` mark the first working USB DAC
 - Headphone target decided: rated 32 Ω+, 16 Ω tolerated at reduced output; line output still open
 
+## 2026-11-15 — Analog plan and docs cleanup
+
+- Amplifier: stage 1 NJM4556A (breadboard, capacitor-coupled, relay mute), stage 2 OPA1622 + LM27762
+  board (hw P2); both take the DAC line output at gain 1 through the same module connector
+- Volume: endless encoder (no push) + firmware gain, combined with the OS volume via a UAC2 Feature
+  Unit; mute (separate button/switch) deferred
+- Meters: levels computed in firmware, PWM-driven; DAC always on, amp/meters on a soft-start rail
+- Architecture, decisions, pinout, BOM, build log and README updated to match
+
 ## Next
 
-- Analog volume control (now: −24 dB digital, `OUTPUT_SHIFT`)
+- Lab 9: NJM4556A stage 1 on the breadboard, multimeter checks
+- Lab 10: soft-start audio rail, mute relay, power sequencing, measured power budget
+- Then: encoder + firmware volume + Feature Unit; meters
 - Optional from lab 8 stretch: PI controller, 44.1 kHz, Windows feedback format

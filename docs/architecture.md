@@ -3,43 +3,41 @@
 ## 1. Purpose
 
 This document describes the current target architecture for the USB-C desktop headphone interface.
+Statuses of the individual choices are in `decisions.md`; numbering rules in `versioning.md`.
 
-The architecture is intentionally modular. During prototyping, the RP2040-Zero and PCM5102A are separate modules and the analog electronics can be developed independently.
+The architecture is intentionally modular. During prototyping, the RP2040-Zero, the PCM5102A and
+the headphone amplifier are separate modules that can be developed and replaced independently.
 
 ## 2. Top-level architecture
 
 ```text
-                            USB-C
-                       AUDIO DATA + 5 V
-                              |
-                              v
-                      +---------------+
-                      |  RP2040-Zero  |
-                      | USB Audio MCU |
-                      +-------+-------+
-                              |
-                              | I2S
-                              v
-                      +---------------+
-                      |   PCM5102A    |
-                      |      DAC      |
-                      +-------+-------+
-                              |
-                         analog L/R
-                              |
-                +-------------+-------------+
-                |                           |
-                v                           v
-        L/R meter drivers          stereo volume control
-                |                           |
-                v                           v
-        analog L/R meters           headphone amplifier
-                                            |
-                                      +-----+-----+
-                                      |           |
-                                      v           v
-                                   3.5 mm      6.35 mm
+                         USB-C (audio data + 5 V)
+                                   |
+                                   v
+   rotary encoder  ------->  +-------------+  -------> 2x PWM --> meter drivers --> L/R meters
+   (volume)                  | RP2040-Zero |  -------> AUDIO_EN, AMP_MUTE, status LEDs
+   power toggle    ------->  |  USB audio  |
+                             |  volume     |
+                             |  meter calc |
+                             +------+------+
+                                    | I2S
+                                    v
+                             +-------------+
+                             |  PCM5102A   |  line level, ~2.1 Vrms full scale
+                             +------+------+
+                                    |
+                     +--------------+---------------+
+                     |                              |
+                     v                              v
+          headphone amplifier (gain 1)     line output (TBD)
+                     |
+               +-----+-----+
+               v           v
+            3.5 mm      6.35 mm
 ```
+
+Volume and meter levels are computed in firmware, so there is no analog volume control or analog
+meter tap in the audio path.
 
 ## 3. USB and digital audio
 
@@ -47,125 +45,131 @@ The architecture is intentionally modular. During prototyping, the RP2040-Zero a
 
 Responsibilities:
 
-- USB device connection through its USB-C connector
-- USB Audio Class playback
-- conversion of USB audio stream into I2S
-- optional control of status LEDs
-- optional mute/control signals for the analog subsystem
+- USB Audio Class 2 playback device on its own USB-C connector
+- USB audio stream → I2S (PIO + DMA)
+- volume: local knob and host (OS) volume, applied to the samples
+- meter levels from the samples, output as PWM
+- power sequencing of the amplifier (switched rail, mute)
+- status LEDs
 
-Initial firmware target:
-
-- stereo output
-- 24-bit / 48 kHz
-- driverless operation where supported by the host OS
-
-Implemented (2026-11-15, `firmware/rp2040`): UAC2 playback at 48 kHz / 24-bit stereo, asynchronous
+Implemented (firmware 0.1.0, hardware P1): UAC2 playback at 48 kHz / 24-bit stereo, asynchronous
 with a feedback endpoint, I2S out by PIO + DMA, plus a USB serial port for status output. Works
 driverless on macOS. Windows needs the feedback in 16.16 format instead of 10.14 (untested).
+Volume is a fixed −24 dB (`OUTPUT_SHIFT 4`); the OS volume slider is greyed out because the
+descriptors declare no volume control yet.
 
-Do not optimize for very high sample rates until the basic audio path is stable.
+Do not optimize for very high sample rates until the rest of the device works.
 
 ## 4. DAC
 
-### PCM5102A module
+The prototype uses a ready-made PCM5102A module, powered from the board 5V pin (module VIN).
 
-The prototype uses a ready-made PCM5102A module.
-
-Expected digital signals:
-
-- BCLK
-- LRCLK / WS
-- DATA
-- common GND
-
-No external MCLK is needed: SCK is tied to GND and the module derives its clock from BCK (see `pinout.md`).
-
-The DAC output is treated as **line level**. It must not be assumed to be a headphone driver.
+- I2S: BCK, LRCK, DIN, common GND. No MCLK: SCK is tied to GND and the DAC's PLL derives its clock
+  from BCK (see `pinout.md`).
+- Output is **line level**, about 2.1 Vrms at full scale, centred on 0 V. It is not a headphone
+  driver.
+- XSMT (soft mute) is tied to 3V3 today; it is planned to move to a GPIO for power sequencing.
+- The DAC stays powered whenever USB is connected, so the RP2040 never drives I2S lines into an
+  unpowered chip.
 
 ## 5. Volume control
 
-Initial target:
+Requirements: a large, pleasant knob (endless, no MIN/MAX markings), local control of the level,
+independent of the computer, and the OS volume slider should work too.
 
-- 10 kOhm dual-gang logarithmic potentiometer
-- analog volume control
-- placed between the DAC output and headphone amplifier
+Design (prototype):
 
-The final potentiometer model is TBD. A low-cost part is acceptable during prototyping; channel tracking should be evaluated before selecting the final component.
+- **Endless rotary encoder**, without a push switch. A 6 mm shaft takes a 30–40 mm aluminium
+  knob. Detented or smooth (detentless) is to be tried by feel; the exact part is TBD.
+- **Firmware volume**: each sample is multiplied by a gain before it goes to the DAC.
+  `total gain = host volume × knob volume`, so the two work independently.
+  - knob: 1 dB steps (faster steps when turned quickly), range about 0 to −80 dB
+  - host: a UAC2 **Feature Unit** with a volume control makes the macOS/Windows slider work; the
+    host sends the setting, the firmware applies it
+  - gain changes are ramped over a few milliseconds, so they don't click or "zipper"
+  - at power-up the knob starts at a safe default level (not restored from flash): writing flash
+    stalls the code running from it, and a safe start protects ears and headphones
+- **Why digital volume is fine here:** USB samples are 24-bit and the DAC takes 32-bit words, so
+  the multiply loses nothing audible. The hiss you hear is set by the DAC and amplifier noise
+  floor, which doesn't change with the volume setting; with a gain-1 amplifier and these
+  headphones it stays far below audibility.
+- Consequence: anything connected to the DAC output, including a future line output, follows the
+  volume.
+- Option: the meters can briefly show the volume setting while the knob turns.
+- **Mute is not part of the first design.** Later: a separate front-panel button or switch, and
+  optionally a mute control in the Feature Unit (OS mute key).
+
+Alternatives considered: an analog dual pot (not endless; would allow a fixed line output) and a
+digitally controlled analog volume chip (more parts and wiring). Neither is planned.
 
 ## 6. Headphone amplifier
 
-The exact V1 amplifier topology is **TBD**.
-
 Requirements:
 
-- stereo
-- compatible with the available USB-derived power architecture
-- stable with common headphone loads
-- suitable for approximately 16-80 Ohm headphones as the initial target
-- low noise at normal listening levels
-- enough current for low-impedance headphones
-- output protection / sensible startup and shutdown behavior
+- stereo, gain 1: the DAC already provides enough voltage, the amplifier supplies the current
+- rated for 32 Ω and above (ATH-M40x 35 Ω, DT770 Pro 80 Ω); 16 Ω tolerated at reduced output
+  without damage
+- input = PCM5102A line output, input impedance ≥ 10 kΩ
+- runs from the switched USB 5 V rail
+- no thump at power-up/down: a mute controlled by firmware
 
-Do not assume that NJM4556, TPA6120A2, or any previously discussed amplifier is the final choice until a schematic and supply topology have been reviewed.
+Two stages, same module interface (`decisions.md`, "Amp input / interface"):
 
-## 7. Analog meters
+| Stage | Hardware | Amplifier | Supply | Output | Mute |
+|---|---|---|---|---|---|
+| 1 | P1, breadboard | NJM4556A, gain-1 buffer | Single 5 V, ferrite + 470–1000 µF | Capacitor-coupled, about 1 Vrms max | Relay in series with the outputs |
+| 2 | P2, small amp PCB | OPA1622 | LM27762: about ±4.5 V from 5 V | Ground-referenced, about 2 Vrms | OPA1622 shutdown pin + LM27762 enables |
 
-Two physical moving-coil meters are planned:
+Stage 2 follows TI reference design TIDA-01341. Before its schematic: check the OPA1622 enable-pin
+logic reference (a level shifter may be needed).
 
-- LEFT
-- RIGHT
+## 7. Line output
 
-Preferred signal tap: DAC line output **before the volume control**.
+A separate output for active PC speakers is under consideration (TBD). With firmware volume it
+would follow the knob. Option: headphone sockets with switch contacts let the firmware detect a
+plugged-in headphone and mute the line output.
 
-Reason: meter movement should represent source/audio level and remain independent of headphone listening volume.
+## 8. Analog meters
 
-Conceptual path:
+Two physical moving-coil meters, LEFT and RIGHT.
 
-```text
-DAC L ----+----> volume L
-          |
-          +----> high-impedance meter driver L ----> LEFT meter
+- Levels are computed in firmware from the samples **before the knob volume** (after the host
+  volume, which is already applied when the samples arrive), smoothed for VU-like movement.
+- Each meter is driven by a PWM output → RC filter → simple current driver (op-amp/transistor;
+  LM358 is adequate for this low-frequency job). Nothing touches the analog audio path.
+- Meter processing must not block USB or DMA servicing.
+- Meter model, full-scale current, illumination and driver values are TBD. Lamps may draw much more
+  power than the movements.
 
-DAC R ----+----> volume R
-          |
-          +----> high-impedance meter driver R ----> RIGHT meter
-```
+## 9. Power
 
-The meter driver should not significantly load the DAC output.
-
-Exact rectifier, attack/decay constants, calibration level, meter sensitivity, and op-amp are TBD.
-
-## 8. Power
-
-The device has one external connection for both data and power: USB-C on the RP2040-Zero.
-
-Conceptual distribution:
+One external connection for data and power: USB-C on the RP2040-Zero.
 
 ```text
 USB-C / VBUS 5 V
-       |
-       +----> RP2040-Zero / digital section
-       |
-       +----> switched audio power rail
-                  |
-                  +----> DAC power
-                  +----> headphone amplifier supply circuitry
-                  +----> meter drivers
-                  +----> meter illumination
-                  +----> AUDIO indicator
+   |
+   +----> RP2040-Zero (its own 3.3 V regulator)
+   |
+   +----> PCM5102A module VIN (always on)
+   |
+   +----> soft-start load switch  <---- AUDIO_EN (GPIO)
+              |
+              +----> ferrite + bulk capacitor ----> headphone amplifier
+              |                                     (stage 2: LM27762 -> ±4.5 V)
+              +----> meter drivers + meter lamps
 ```
 
-Preferred behavior:
+- The RP2040 stays powered and enumerated while USB is connected.
+- The front-panel power toggle is read by the firmware, which runs the sequence: rail on → wait
+  until ready → unmute; mute → rail off. The same happens on USB suspend/disconnect.
+- The soft-start switch limits inrush into the bulk capacitors (USB allows only about 10 µF directly
+  on VBUS). The bulk capacitor steadies the rail; it doesn't supply the average power.
+- The USB descriptor declares 100 mA today. Raise it (up to 500 mA) once the power budget is
+  measured; meter lamps are the largest unknown.
 
-- RP2040 remains powered while USB is connected.
-- Front-panel POWER/AUDIO switch controls the analog/audio subsystem.
-- Host USB enumeration therefore does not necessarily disappear when the audio power switch is off.
+## 10. Front panel concept
 
-This behavior must be validated electrically. In particular, avoid unintentionally driving an unpowered DAC through I/O pins.
-
-## 9. Front panel concept
-
-Two metal instrument-style subpanels are planned.
+Two metal instrument-style subpanels (details in `enclosure.md`).
 
 ### Instrument panel
 
@@ -176,17 +180,15 @@ Two metal instrument-style subpanels are planned.
 
 ### Control panel
 
-- large volume knob
+- large volume knob (endless encoder)
 - 3.5 mm headphone socket
 - 6.35 mm headphone socket
 
 A separate physical toggle switch may be positioned outside/below the two subpanels.
 
-Red leather may be used around the metal panels or on the enclosure shell rather than directly underneath controls.
+## 11. Microphone expansion
 
-## 10. Microphone expansion
-
-Microphone input is explicitly **not required for the first playback prototype**, but the design should avoid making it unnecessarily difficult to add later.
+Not required for V1, but the design should not make it unnecessarily difficult to add later.
 
 Possible V2 path:
 

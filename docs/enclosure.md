@@ -111,9 +111,10 @@ Preferred knob:
 -   aluminium;
 -   approximately 30--40 mm diameter;
 -   knurled or machined surface;
--   clear position marker.
+-   no position marker: the volume control is an endless rotary
+    encoder, so the knob angle does not show the level.
 
-The potentiometer/encoder and both headphone sockets should mount
+The encoder and both headphone sockets should mount
 **directly to the brass panel from behind**.
 
 ------------------------------------------------------------------------
@@ -199,7 +200,7 @@ panels**:
   VU meters                      Left brass panel
   Status LEDs                    Left brass panel or small PCB immediately behind it
   Power toggle                   Brass panel
-  Volume potentiometer/encoder   Right brass panel
+  Volume encoder                 Right brass panel
   3.5 mm headphone jack          Right brass panel
   6.35 mm headphone jack         Right brass panel
   RP2040/control PCB             Internal printed frame
@@ -341,7 +342,7 @@ Before final CAD dimensions are selected, measure:
 -   VU meter body depth;
 -   VU meter panel cutout dimensions;
 -   VU meter mounting method;
--   volume potentiometer/encoder shaft and body dimensions;
+-   volume encoder shaft and body dimensions;
 -   3.5 mm socket mounting dimensions;
 -   6.35 mm socket mounting dimensions and depth;
 -   toggle-switch mounting dimensions and depth;
@@ -417,6 +418,7 @@ perform a real function.
 -   Exact volume knob dimensions
 -   Final power-switch position
 -   Whether both headphone sockets can operate simultaneously
+-   Whether a line output is added, and where (likely the rear panel)
 -   Exact engraving/label method
 -   Final brass surface protection: natural patina, wax, or clear coat
 

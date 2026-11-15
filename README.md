@@ -11,13 +11,13 @@ The device is intended to combine a useful everyday headphone output with a hand
 - Single USB-C connection for **audio data and power**
 - RP2040-Zero as the USB Audio device/controller
 - PCM5102A I2S DAC
-- Stereo headphone amplifier
-- Analog stereo volume control
+- Stereo headphone amplifier (rated for 32 Ω and above)
+- Large endless volume knob (rotary encoder); the OS volume slider works too
 - 3.5 mm stereo headphone output
 - 6.35 mm stereo headphone output
 - Physical audio-power switch
 - USB / audio-power status indicators
-- Two analog L/R level meters
+- Two analog L/R level meters, driven by the firmware
 - Metal front panel with two aircraft/instrument-style subpanels
 - Optional red leather exterior/accent panels
 
@@ -28,6 +28,8 @@ The device is intended to combine a useful everyday headphone output with a hand
 - Dedicated audio ADC
 - Simultaneous USB playback and recording
 - Custom PCB replacing prototype modules
+- Line output for active speakers (undecided)
+- Mute button or switch
 - Additional firmware-controlled indicators
 
 ## Initial audio target
@@ -47,57 +49,53 @@ Higher sample rates can be considered after the basic implementation is stable.
 ## System overview
 
 ```text
-USB-C
-  |
-  v
-RP2040-Zero
-  |
-  | I2S
-  v
-PCM5102A DAC
-  |
-  +------------------> L/R meter drivers --> analog meters
-  |
-  v
-10k dual-gang logarithmic volume control
-  |
-  v
-Headphone amplifier
-  |
-  +--> 3.5 mm TRS
-  +--> 6.35 mm TRS
+USB-C ---> RP2040-Zero ---I2S---> PCM5102A DAC ---> headphone amplifier (gain 1) ---> 3.5 mm + 6.35 mm
+             |    ^                                 (stage 1 NJM4556A, stage 2 OPA1622)
+             |    +--- rotary encoder (volume), power toggle
+             +-------> PWM ---> L/R meter drivers ---> analog meters
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for details.
+Volume and meter levels are computed in the firmware. See [`docs/architecture.md`](docs/architecture.md) for details.
+
+## Versions
+
+Firmware **0.1.0** on hardware **P1** (breadboard). Rules in [`docs/versioning.md`](docs/versioning.md).
 
 ## Repository structure
 
 ```text
 .
 ├── README.md
+├── progress.md          dated progress notes
 ├── docs/
-│   ├── architecture.md
-│   ├── bom.md
-│   ├── decisions.md
-│   ├── pinout.md
-│   └── build-log.md
+│   ├── architecture.md  target architecture
+│   ├── decisions.md     decision log with status
+│   ├── versioning.md    product / hardware / firmware numbering
+│   ├── pinout.md        wiring of the current hardware revision
+│   ├── bom.md           parts
+│   ├── build-log.md     what was built and measured
+│   ├── analog-analysis.md  amplifier/power background
+│   └── enclosure.md     enclosure and front-panel concept
 ├── firmware/
-│   ├── labs/        learning labs 0–8 with labbooks
-│   └── rp2040/      the device firmware
+│   ├── labs/            learning labs 0–8 with labbooks
+│   └── rp2040/          the device firmware
 ├── hardware/
+│   ├── datasheets/
 │   ├── schematics/
-│   └── pcb/
-└── mechanical/
-    ├── enclosure/
-    └── front-panel/
+│   └── kicad/
+├── mechanical/
+│   ├── drawings/
+│   ├── enclosure/
+│   └── front-panel/
+└── images/
 ```
 
 ## Development philosophy
 
 1. Make USB audio -> I2S -> DAC work first.
 2. Verify clean line-level analog output.
-3. Add volume control and headphone amplifier.
-4. Add analog level meters and indicators.
+3. Add the headphone amplifier (NJM4556A on the breadboard, later an OPA1622 board) and power sequencing.
+4. Add encoder volume, analog level meters and indicators.
 5. Prototype the complete device before committing to enclosure dimensions.
 6. Only then design a custom PCB and final mechanical assembly.
 
