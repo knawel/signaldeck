@@ -24,7 +24,12 @@ set(PICO_BOARD waveshare_rp2040_zero CACHE STRING "Board type")
 # Must come before project()
 include(pico_sdk_import.cmake)
 
-project(signaldeck C CXX ASM)
+# Firmware version: the ONE place to change it (rules in docs/versioning.md).
+# MINOR and PATCH must stay 0-9: the USB descriptor stores them as one decimal digit each.
+project(signaldeck VERSION 0.1.0 LANGUAGES C CXX ASM)
+
+# Hardware revision this firmware is built for (P1 = breadboard prototype).
+set(SIGNALDECK_HW_REV "P1")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -46,6 +51,11 @@ target_include_directories(signaldeck PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 # We drive TinyUSB ourselves, so the SDK no longer adds the interface picotool uses to reboot
 # the board. These put it back (usb_descriptors.c lists it), so flashing without BOOT works.
 target_compile_definitions(signaldeck PRIVATE
+    FW_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    FW_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    FW_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    FW_VERSION_STRING="${PROJECT_VERSION}"
+    FW_HW_REV="${SIGNALDECK_HW_REV}"
     PICO_ENABLE_USB_RESET_VIA_VENDOR_INTERFACE=1
     PICO_ENABLE_USB_RESET_VIA_BAUD_RATE=1
     PICO_USB_RESET_SUPPORT_MS_OS_20_DESCRIPTOR=0
@@ -64,5 +74,8 @@ target_link_libraries(signaldeck PRIVATE
 # printf goes over USB: the serial port is one of our own USB interfaces.
 pico_enable_stdio_usb(signaldeck 1)
 pico_enable_stdio_uart(signaldeck 0)
+
+# Stores the version in the binary too: `picotool info` shows it.
+pico_set_program_version(signaldeck "${PROJECT_VERSION} (hw ${SIGNALDECK_HW_REV})")
 
 pico_add_extra_outputs(signaldeck)

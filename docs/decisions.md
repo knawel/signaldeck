@@ -24,7 +24,8 @@ Statuses:
 | Volume | Analog, 10 kOhm dual logarithmic | Prototype | Simple tactile control independent of host software |
 | Headphone outputs | 3.5 mm + 6.35 mm TRS | Accepted | Primary product requirement |
 | Headphone amplifier | Not yet selected | TBD | Must be chosen together with power topology and load requirements |
-| Initial headphone load target | Approximately 16-80 Ohm | Prototype | Covers common portable/studio headphones while keeping USB-powered design realistic |
+| Headphone load target | Rated for 32 Ohm and above (ATH-M40x 35 Ohm, DT770 Pro 80 Ohm); 16 Ohm tolerated at reduced output without damage | Accepted | Full 16 Ohm drive would double the current needed from a 5 V USB rail; the actual headphones are 35 and 80 Ohm (2026-11-15) |
+| Line output | Fixed vs. volume-following line output for active speakers | TBD | Depends on where volume lives (digital before the DAC vs. analog after it); does not block the amp breadboard lab |
 | Level indication | Two physical L/R analog meters | Accepted | Functional level display and core industrial/instrument aesthetic |
 | Meter signal | Tap before volume control | Prototype | Meter activity independent of listening volume |
 | Status indicators | USB + AUDIO | Prototype | Avoid unnecessary front-panel clutter |
@@ -32,4 +33,5 @@ Statuses:
 | Mechanical design | Two metal front subpanels | Accepted | Aircraft/instrument-panel visual language |
 | Leather | Red leather as enclosure/accent material | Prototype | Reuse existing material without compromising control mounting |
 | Microphone input | Reserve as future expansion | Deferred | Useful feature but adds ADC, preamp and USB capture complexity |
+| Versioning | Product V1/V2, hardware P1…/A…, firmware SemVer 0.x; version set once in CMake (`docs/versioning.md`) | Accepted | Keeps generation, board and firmware numbers from being confused; one source of truth for the number |
 | Custom PCB | After modular prototype works | Deferred | Avoid debugging USB, DAC, analog and PCB layout simultaneously |

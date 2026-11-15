@@ -32,6 +32,14 @@ PCM5102A on GP0–2, DMA ping-pong, asynchronous feedback with a P controller on
 - Measured: playback drifts ~300 ppm vs the Mac without the controller; with KP 8 the FIFO settles
   ~97 frames below target, 0 short / 0 overflow
 
+## 2026-11-15 — Versioning: firmware 0.1.0, hardware P1
+
+- Rules in `docs/versioning.md`: product V1/V2, hardware P1…/A…, firmware SemVer 0.x
+- Version set once in `firmware/rp2040/CMakeLists.txt`; shown in USB `bcdDevice` (0x0010),
+  the serial banner and `picotool info`
+- Tags `fw/v0.1.0` and `hw/P1` mark the first working USB DAC
+- Headphone target decided: rated 32 Ω+, 16 Ω tolerated at reduced output; line output still open
+
 ## Next
 
 - Analog volume control (now: −24 dB digital, `OUTPUT_SHIFT`)

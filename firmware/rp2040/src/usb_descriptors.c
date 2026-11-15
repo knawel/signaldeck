@@ -12,6 +12,19 @@
 
 // --- device descriptor: the first thing the computer reads ---
 
+// bcdDevice is the device version in "binary-coded decimal": each hex digit holds one decimal
+// digit, laid out 0xJJMN = major JJ, minor M, patch N. So version 0.1.0 becomes 0x0010, and
+// macOS System Information shows it as "Version: 0.10". The FW_VERSION_* numbers come from
+// project(VERSION ...) in CMakeLists.txt, passed in as -D compiler flags.
+//
+// A minor or patch of 10 would not fit in one digit. _Static_assert (C11) checks a condition
+// while compiling: if it is false the build stops with the message, so we cannot ship a wrong
+// version number by accident.
+_Static_assert(FW_VERSION_MAJOR <= 99 && FW_VERSION_MINOR <= 9 && FW_VERSION_PATCH <= 9,
+               "bcdDevice holds major 0-99, minor 0-9, patch 0-9");
+#define FW_BCD_DEVICE (((FW_VERSION_MAJOR / 10) << 12) | ((FW_VERSION_MAJOR % 10) << 8) | \
+                       (FW_VERSION_MINOR << 4) | FW_VERSION_PATCH)
+
 static const tusb_desc_device_t desc_device = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
@@ -23,7 +36,7 @@ static const tusb_desc_device_t desc_device = {
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor           = 0xCAFE,               // TinyUSB's test vendor ID: fine on your own desk only
     .idProduct          = 0x4008,               // kept from lab 8: the flash task passes --vid 0xcafe --pid 0x4008
-    .bcdDevice          = 0x0100,               // device version 1.00
+    .bcdDevice          = FW_BCD_DEVICE,        // firmware version, see above
     .iManufacturer      = 1,                    // indexes into string_desc[] below
     .iProduct           = 2,
     .iSerialNumber      = 3,

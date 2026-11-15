@@ -4,6 +4,11 @@ USB sound card: UAC2, 48 kHz, 24-bit stereo, asynchronous with a feedback endpoi
 through a PCM5102A over I2S. Promoted from lab 8 (`firmware/labs/08-usb-audio`, Part C);
 the background for every part is in `firmware/labs/labbook2.md`, labs 7 and 8.
 
+## Version
+
+Firmware **0.1.0** for hardware **P1**. The version is set in `CMakeLists.txt` (`project(... VERSION ...)`,
+`SIGNALDECK_HW_REV`); rules in `docs/versioning.md`.
+
 ## Hardware
 
 RP2040-Zero → PCM5102A module: GP0 → BCK, GP1 → LCK (LRCK), GP2 → DIN, 5V → VIN, GND, SCK to GND,

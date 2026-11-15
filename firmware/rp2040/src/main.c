@@ -394,8 +394,9 @@ static void service_audio(void) {
 // =====================================================================================
 
 static void print_banner(void) {
-    printf("\nsignaldeck USB DAC. I2S on BCK GP%d, LRCK GP%d, DIN GP%d\n",
-           I2S_BCK_PIN, I2S_LRCK_PIN, I2S_DIN_PIN);
+    // FW_VERSION_STRING and FW_HW_REV are string literals ("0.1.0", "P1") defined by CMake.
+    printf("\nsignaldeck USB DAC, firmware %s for hardware %s\n", FW_VERSION_STRING, FW_HW_REV);
+    printf("I2S on BCK GP%d, LRCK GP%d, DIN GP%d\n", I2S_BCK_PIN, I2S_LRCK_PIN, I2S_DIN_PIN);
     printf("playing at %.2f Hz; FIFO %d frames, target %d; output %d dB\n",
            actual_rate_hz(), FIFO_FRAMES, TARGET_FRAMES, -6 * OUTPUT_SHIFT);
     printf("feedback %lu = %.5f samples per frame\n", feedback, feedback / 65536.0);

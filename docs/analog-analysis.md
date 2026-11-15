@@ -18,8 +18,8 @@ pinout, BOM or decision log. Older planning choices in those documents remain un
 ## Goals and preferences under discussion
 
 - Headphone output for ATH-M40x (35 ohms), DT770 Pro (80 ohms) and generic PC headphones.
-- Initial request included full 16-ohm support. The user is now considering a 32-ohm rated
-  minimum, with accidental 16-ohm connection tolerated at reduced output. This is not yet confirmed.
+- **Decided 2026-11-15:** rated for 32 ohms and above; accidental 16-ohm connection tolerated
+  at reduced output (no damage). Full 16-ohm drive is not a requirement.
 - Separate line output for active PC speakers, which have their own amplifier.
 - Prefer an endless rotary encoder with push-to-mute and firmware volume; avoid fixed
   MIN/MAX position markings. Detailed control behavior is undecided.
