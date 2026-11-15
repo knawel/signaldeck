@@ -10,8 +10,8 @@ section 6; parts: `docs/bom.md` section B2.
 - **Part A:** the amplifier itself, checked step by step on dummy loads.
 - **Part B:** soft-start switched rail, mute relay on a GPIO, `amp_on()` / `amp_off()`, power budget.
 
-How this guide works: section 2 explains each block, section 3 has values for you to work out
-(post them and I'll check), section 4 is the build order. Each check in section 4 protects the
+How this guide works: section 2 explains each block, section 3 gives the background (school-level
+physics is enough) and the values for you to work out (post them and I'll check), section 4 is the build order. Each check in section 4 protects the
 next step, so don't skip ahead.
 
 ---
@@ -105,22 +105,129 @@ bridged with a wire and you test on dummy loads; Part B puts it under firmware c
 
 ---
 
-## 3. Values to work out
+## 3. Background, then the values to work out
 
-Formula you need for the filters: a resistor R and capacitor C form a high-pass (or low-pass) with
-corner frequency **f = 1 / (2π·R·C)**. An RC charges to ~99 % in about **5·R·C**.
+### 3.1 The ideas you need
 
-Post your answers (with how you got them); I'll check before you build.
+Seven short ideas, each with a worked example that uses *different* numbers from the questions.
+Keep a calculator handy and convert units first: µF = 10⁻⁶ F, kΩ = 10³ Ω, mA = 10⁻³ A.
 
-| # | Question | Hints |
-|---|---|---|
-| Q1 | Output high-pass: f with C_out = 1000 µF into 32 Ω and into 80 Ω (take R_s as 4.7 Ω). And with 470 µF into 32 Ω? | R is R_s + headphone |
-| Q2 | Choose R_b and C_in so the input high-pass is below ~3 Hz and the input impedance ≥ 10 kΩ. | Large R_b → small C_in; but R_b × the op-amp's input bias current (datasheet) is an offset voltage |
-| Q3 | Choose R_top = R_bot. What's the VREF filter corner with C_ref = 47 µF? Roughly how long until VREF settles after power-up? | For the filter, R is R_top ∥ R_bot. 10 k–100 k is sensible |
-| Q4 | Choose R_bleed so C_out (1000 µF) is charged within ~3 s. How much does R_bleed load the op-amp compared with a 32 Ω headphone? | 5·R·C. This becomes the firmware's unmute delay in Part B |
-| Q5 | Relay coil current from the relay datasheet (5 V / coil resistance). Choose R_base so the NPN is fully on from a 3.3 V GPIO. | Aim base current ≈ coil current / 10 (forced β of 10). V_BE ≈ 0.7 V |
-| Q6 | From the NJM4556A datasheet, estimate the maximum clean output swing on a 5 V supply into 32 Ω. At what dBFS do you expect clipping to start? | Full scale = 2.1 Vrms. Look for "maximum output voltage" and the load it's specified at; it's given for ± supplies |
-| Q7 | Datasheet lookup: supply current (both channels, no load), minimum supply voltage, and whether it's stable as a voltage follower. | You'll compare the supply current with your measurement in step A4 |
+**1. Ohm's law and power.** V = I·R, and power P = V·I = V²/R.
+*Example:* 2 V across a 100 Ω resistor → I = 2 / 100 = 20 mA, P = 2 × 0.02 = 40 mW.
+
+**2. RMS and peak.** An AC voltage goes up and down; a multimeter on "V~" shows the **RMS** value,
+a kind of average that gives the same heating as DC. For a sine: peak = RMS × 1.414, and it swings
+from −peak to +peak.
+*Example:* 1 Vrms → 1.41 V peak → 2.83 V from bottom to top.
+
+**3. Decibels.** A ratio on a log scale. For voltages: dB = 20·log₁₀(V / V_ref), and back:
+V = V_ref × 10^(dB/20). Useful anchors: −6 dB ≈ half, −20 dB = one tenth. **dBFS** means "relative
+to digital full scale": 0 dBFS is the loudest sample the DAC can play, 2.1 Vrms here.
+*Example:* −12 dBFS → 2.1 × 10^(−12/20) = 2.1 × 0.25 = 0.53 Vrms.
+
+**4. Capacitors.** A capacitor stores charge. With DC, current flows only until it's charged, then
+stops, so it **blocks DC**. With AC it keeps charging and discharging, so AC **passes**, and the
+easier the higher the frequency or the bigger the capacitor. Its "resistance to AC" (reactance) is
+X_C = 1 / (2π·f·C).
+
+A capacitor in series with the signal and a resistor after it (to ground or to VREF) makes a
+**high-pass filter**: low frequencies are lost across the capacitor, high ones pass. The **corner
+frequency** is where X_C equals R:
+
+&nbsp;&nbsp;&nbsp;&nbsp;**f = 1 / (2π·R·C)**
+
+At f the signal is already 3 dB down (about 70 %), at 2·f about 1 dB down, at 4·f almost nothing.
+For audio we want the corner well below 20 Hz.
+*Example:* C = 10 µF, R = 1 kΩ → f = 1 / (2π × 1000 × 0.00001) = 15.9 Hz.
+Rearranged to find C for a wanted corner: C = 1 / (2π·R·f).
+
+**5. RC charging time.** The **time constant** τ = R·C (seconds, with ohms and farads). A
+capacitor charging through a resistor reaches 63 % after τ and is practically full (99 %) after 5τ.
+*Example:* 10 µF through 1 kΩ: τ = 10 ms, full after ~50 ms.
+**Electrolytic** capacitors have polarity: the + leg must be at the higher DC voltage.
+
+**6. The op-amp, as used here.** An amplifier with enormous gain. With negative feedback (output
+connected back to the (−) input), two rules describe it well:
+(a) the output does whatever it takes to make (−) equal (+);
+(b) the inputs draw (almost) no current.
+In a **follower**, (−) is wired to the output, so by rule (a) output = (+) input: gain 1.
+Real limits, which the datasheet gives: the output can't reach the supply rails (it stops a volt or
+more short, more with a heavy load), the output current is limited, and a tiny **input bias
+current** (nanoamps) does flow into the inputs.
+
+**7. The transistor as a switch, and relays.** In an NPN transistor a small current into the base
+lets a big current flow from collector to emitter. To be sure it's **fully on** (a closed switch,
+"saturated"), give it a base current of about a tenth of the collector current. The base-emitter
+junction drops about 0.7 V, so the base resistor is R = (V_drive − 0.7) / I_base.
+*Example:* switch 100 mA from a 5 V logic pin: I_base = 10 mA, R = (5 − 0.7) / 0.01 = 430 Ω.
+A relay coil is an electromagnet. When its current is switched off, it produces a voltage spike that
+can kill the transistor; the **diode** across the coil gives that current a harmless path.
+
+**Reading datasheet tables.** Values come as Min / Typ / Max, *with test conditions* (supply
+voltage, load, temperature). Always compare the conditions with your own. Many op-amp tables are
+for ±15 V supplies; our "±2.5 V" (0 and 5 V with the middle at 2.5 V) is much less, so look for
+graphs against supply voltage, or estimate.
+
+### 3.2 The questions
+
+Post your answers with the working; wrong answers are useful too, they show where to explain more.
+I'll check everything before you build.
+
+**Q1 — Output high-pass (C_out with the headphone).**
+a) The resistance after C_out is R_s + headphone. With R_s = 4.7 Ω and a 32 Ω headphone, R = ?
+b) Corner frequency with C_out = 1000 µF.
+c) The same for the 80 Ω DT770.
+d) The same for 470 µF and 32 Ω.
+e) Are these fine for audio? (Idea 4: what happens at 20 Hz if the corner is at f?)
+
+**Q2 — Input coupling (C_in and R_b).**
+a) The DAC "sees" R_b as its load. The requirement is ≥ 10 kΩ. Take R_b = 100 kΩ.
+b) Find C_in for a corner at or below 3 Hz (rearranged formula, idea 4).
+c) Pick the nearest value from the BOM range (1–2.2 µF film). What corner does it give?
+d) Look up the NJM4556A input bias current (Q7). Bias current × R_b = a small DC voltage error at
+   the input. How big? Does it matter? (Hint: does DC reach the headphone? Look at C_out.)
+
+**Q3 — The mid-supply reference VREF.**
+a) Why do two equal resistors give VREF = V+/2?
+b) Choose a value between 10 kΩ and 100 kΩ. How much current flows through the divider?
+c) For the filter, the resistance C_ref "sees" is both resistors in parallel: R_top·R_bot /
+   (R_top + R_bot), which for equal resistors is half of one. Value?
+d) Corner frequency with C_ref = 47 µF. (This is a *low-pass*: it lets DC through and removes
+   the supply noise above the corner. Same formula.)
+e) Time until VREF has settled after power-up (idea 5).
+
+**Q4 — R_bleed and the unmute delay.**
+a) C_out (1000 µF) charges through R_bleed. For "charged within 3 s", what's the largest τ
+   allowed (idea 5)? And so the largest R_bleed?
+b) Pick a standard value at or below that.
+c) R_bleed is in parallel with the headphone. At 1 Vrms, how much current does it take, compared
+   with the 32 Ω headphone's current? Is it a problem?
+
+**Q5 — Relay driver.** (Needs your relay's datasheet.)
+a) Find the coil resistance (or nominal coil current) for the 5 V version. Coil current = 5 V /
+   coil resistance.
+b) Base current for "fully on" (idea 7).
+c) R_base from a 3.3 V GPIO; pick the nearest standard value *below* (more base current is safe).
+d) An RP2040 GPIO delivers 4 mA by default (12 mA max if configured). Enough?
+e) In one sentence: what does the 1N4148 across the coil do?
+
+**Q6 — Where will it clip?**
+a) Full scale is 2.1 Vrms. Peak voltage?
+b) The output idles at VREF = 2.5 V, so it has 2.5 V of room up to 5 V and 2.5 V down to 0 V. In
+   the datasheet, find "maximum output voltage" (V_OM) and its conditions (supply and load). It
+   tells how close to the rails the output gets: e.g. ±13 V on ±15 V supplies means about 2 V lost
+   on each side. Estimate the loss for our heavy load (32 Ω is much heavier than most test loads,
+   so expect more loss).
+c) Largest clean peak = 2.5 V − loss. Convert to Vrms.
+d) In dBFS: 20·log₁₀(V_clip_rms / 2.1). Step A4 will show how close your estimate is.
+
+**Q7 — Datasheet lookups (NJM4556A).**
+a) Supply current, both op-amps, no load: typical and maximum, and the conditions.
+b) Operating supply voltage range: is a single 5 V (= ±2.5 V) inside it?
+c) Input bias current, typical (used in Q2 d).
+d) Is it stable as a follower (gain 1)? Look for "unity gain stable", a follower example circuit,
+   or the gain/phase graph. If unclear, say so; we'll decide together.
+
 
 ---
 
