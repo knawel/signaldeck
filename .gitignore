@@ -5,3 +5,5 @@ tones/
 
 # Datasheets: copyrighted, public repo; listed with links in hardware/datasheets/README.md
 hardware/datasheets/*.pdf
+mechanical/enclosure/*/stl/
+mechanical/enclosure/*/dxf/

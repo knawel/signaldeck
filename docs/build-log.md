@@ -122,7 +122,7 @@ Planned tests (multimeter, dummy loads 33 Ω / 82 Ω, then headphones):
 
 ## Milestone 3 - Enclosure mockup (3D printed)
 
-Work folder: `mechanical/enclosure/`
+Work folder: `mechanical/enclosure/v0/` (OpenSCAD model, export script, README with mounting plan)
 
 **Status:** Not started
 
