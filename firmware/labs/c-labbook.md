@@ -20,7 +20,7 @@ Do C1 and C2 now. C3 is worth doing before lab 6, because PIO code is mostly `pi
 
 ## Reading the datasheet
 
-The file is `docs/RP-008371-DS-1-rp2040-datasheet.pdf` (build date 2025-02-20). All section, table and page numbers in this book are from that version. If you download a newer one, the section numbers usually stay the same, but table and page numbers can move.
+The file is `hardware/datasheets/RP-008371-DS-1-rp2040-datasheet.pdf` (build date 2025-02-20). All section, table and page numbers in this book are from that version. If you download a newer one, the section numbers usually stay the same, but table and page numbers can move.
 
 **Page numbers.** "Page 248" here means the number printed at the bottom of the page. Your PDF viewer counts the cover too, so it shows one more (249). Go by the printed number, or just search.
 

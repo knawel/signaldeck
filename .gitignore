@@ -2,3 +2,6 @@ build/
 .cache/
 .DS_Store
 tones/
+
+# Datasheets: copyrighted, public repo; listed with links in hardware/datasheets/README.md
+hardware/datasheets/*.pdf

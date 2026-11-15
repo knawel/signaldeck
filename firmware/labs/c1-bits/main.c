@@ -2,7 +2,7 @@
 //
 // Goal: practise C's bit operators on plain numbers, with PASS/FAIL checks after every run,
 // then look up two real registers in the datasheet, read them through a pointer and decode them.
-// Hardware: nothing new. See labs/c-labbook.md, "Lab C1". Datasheet: docs/RP-008371-DS-1-rp2040-datasheet.pdf
+// Hardware: nothing new. See labs/c-labbook.md, "Lab C1". Datasheet: hardware/datasheets/RP-008371-DS-1-rp2040-datasheet.pdf
 
 #include <stdio.h>
 #include "pico/stdlib.h"

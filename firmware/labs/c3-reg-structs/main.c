@@ -5,7 +5,7 @@
 // Then blink two LEDs like police lights, with one store per change.
 // Then remove `volatile` from a button loop and watch the program hang.
 // Hardware: same as lab C2 (LED on GP29, tactile switch from GP28 to GND), plus a second LED on GP8. See labs/c-labbook.md, "Lab C3".
-// Datasheet: docs/RP-008371-DS-1-rp2040-datasheet.pdf
+// Datasheet: hardware/datasheets/RP-008371-DS-1-rp2040-datasheet.pdf
 
 #include <stdio.h>
 #include "pico/stdlib.h"

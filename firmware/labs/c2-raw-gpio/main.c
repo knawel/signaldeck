@@ -4,7 +4,7 @@
 // read a "button" without any gpio_...() function: only those numbers, a pointer cast, and
 // the bit operators from lab C1.
 // Hardware: LED on GP29 (zone A, from lab 0). 6×6 mm tactile switch between GP28 and GND.
-// See labs/c-labbook.md, "Lab C2". Datasheet: docs/RP-008371-DS-1-rp2040-datasheet.pdf
+// See labs/c-labbook.md, "Lab C2". Datasheet: hardware/datasheets/RP-008371-DS-1-rp2040-datasheet.pdf
 
 #include <stdio.h>
 #include "pico/stdlib.h"     // only for printf and sleep_ms: no gpio_...() calls in this lab
