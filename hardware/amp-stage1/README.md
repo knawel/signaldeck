@@ -37,6 +37,11 @@ You'll look things up in both.
 
 ## 1. The whole circuit at a glance
 
+![Amp stage 1 schematic](schematic.svg)
+
+(Drawn by `tools/draw_schematic.py`, which needs `pip install schemdraw`. The names without values,
+such as R_b and R_bleed, are the ones you work out in section 3. The same circuit in plain text:)
+
 ```text
                  USB 5 V (RP2040-Zero 5V pin; Part B: through the soft-start switch)
                     |
