@@ -39,7 +39,7 @@ You'll look things up in both.
 
 ![Amp stage 1 schematic](schematic.svg)
 
-(Drawn by `tools/draw_schematic.py`, which needs `pip install schemdraw`. The names without values,
+(Drawn, with the wiring view below, by `tools/draw_schematic.py`, which needs `pip install schemdraw`. The names without values,
 such as R_b and R_bleed, are the ones you work out in section 3. The same circuit in plain text:)
 
 ```text
@@ -67,6 +67,26 @@ such as R_b and R_bleed, are the ones you work out in section 3. The same circui
                                                                 GND
   jack SLEEVE ── GND        (relay coil: GPIO → R_base → NPN → coil → 5 V, 1N4148 across the coil)
 ```
+
+### Wiring view: what goes on each U1 pin
+
+The schematic shows how the circuit works; this view is for wiring the breadboard. U1 is the
+NJM4556AD, seen from the top with the notch up. Check the pinout against the datasheet.
+
+![U1 wiring view](wiring.svg)
+
+Use the table as a checklist before the first power-up (step A2):
+
+| Pin | Name | Connect to |
+|---|---|---|
+| 1 | OUT A | R_s (L) → C_out (L) → relay → jack TIP; and pin 2 |
+| 2 | −IN A | pin 1 (follower jumper) |
+| 3 | +IN A | C_in (L) from DAC L OUT; R_b (L) to VREF |
+| 4 | V− | GND; − side of the 100 nF and 10 µF |
+| 5 | +IN B | C_in (R) from DAC R OUT; R_b (R) to VREF |
+| 6 | −IN B | pin 7 (follower jumper) |
+| 7 | OUT B | R_s (R) → C_out (R) → relay → jack RING; and pin 6 |
+| 8 | V+ | V+ (filtered, after the ferrite); + side of the 100 nF and 10 µF |
 
 Pin numbers: check the NJM4556A datasheet for the DIP-8 pinout (standard dual op-amp: outputs on
 1 and 7, inputs 2/3 and 6/5, V− on 4, V+ on 8). Here V− is GND.
