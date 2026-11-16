@@ -199,27 +199,27 @@ Post your answers with the working; wrong answers are useful too, they show wher
 I'll check everything before you build.
 
 **Q1 — Output high-pass (C_out with the headphone).**
-a) The resistance after C_out is R_s + headphone. With R_s = 4.7 Ω and a 32 Ω headphone, R = ?
-b) Corner frequency with C_out = 1000 µF.
-c) The same for the 80 Ω DT770.
-d) The same for 470 µF and 32 Ω.
-e) Are these fine for audio? (Idea 4: what happens at 20 Hz if the corner is at f?)
+a) The resistance after C_out is R_s + headphone. With R_s = 4.7 Ω and a 32 Ω headphone, R = 36.7Ω
+b) Corner frequency with C_out = 1000 µF. 4.3 Hz
+c) The same for the 80 Ω DT770. 1.9 Hz
+d) The same for 470 µF and 32 Ω. 9.2 Hz
+e) Are these fine for audio? (Idea 4: what happens at 20 Hz if the corner is at f?) yes
 
 **Q2 — Input coupling (C_in and R_b).**
 a) The DAC "sees" R_b as its load. The requirement is ≥ 10 kΩ. Take R_b = 100 kΩ.
-b) Find C_in for a corner at or below 3 Hz (rearranged formula, idea 4).
-c) Pick the nearest value from the BOM range (1–2.2 µF film). What corner does it give?
+b) Find C_in for a corner at or below 3 Hz (rearranged formula, idea 4). 531 nF
+c) Pick the nearest value from the BOM range (1–2.2 µF film). What corner does it give? 1uF, it gives 1.6 Hz
 d) Look up the NJM4556A input bias current (Q7). Bias current × R_b = a small DC voltage error at
-   the input. How big? Does it matter? (Hint: does DC reach the headphone? Look at C_out.)
+   the input. How big? Does it matter? (Hint: does DC reach the headphone? Look at C_out.) 50nA, so it gives 50mV. It doesn't matter, because C_out block DC.
 
 **Q3 — The mid-supply reference VREF.**
-a) Why do two equal resistors give VREF = V+/2?
-b) Choose a value between 10 kΩ and 100 kΩ. How much current flows through the divider?
+a) Why do two equal resistors give VREF = V+/2? Because I is the same and V1 = V2 = IR1 = IR2
+b) Choose a value between 10 kΩ and 100 kΩ. How much current flows through the divider? 53uA for R=47kΩ
 c) For the filter, the resistance C_ref "sees" is both resistors in parallel: R_top·R_bot /
-   (R_top + R_bot), which for equal resistors is half of one. Value?
+   (R_top + R_bot), which for equal resistors is half of one. Value? 23.5kΩ
 d) Corner frequency with C_ref = 47 µF. (This is a *low-pass*: it lets DC through and removes
-   the supply noise above the corner. Same formula.)
-e) Time until VREF has settled after power-up (idea 5).
+   the supply noise above the corner. Same formula.) 0.144Hz
+e) Time until VREF has settled after power-up (idea 5). 99% will be at 5t. t = RC = 1.1sec, so 5.5sec
 
 **Q4 — R_bleed and the unmute delay.**
 a) C_out (1000 µF) charges through R_bleed. For "charged within 3 s", what's the largest τ
