@@ -210,16 +210,16 @@ a) The DAC "sees" R_b as its load. The requirement is ≥ 10 kΩ. Take R_b = 100
 b) Find C_in for a corner at or below 3 Hz (rearranged formula, idea 4). 531 nF
 c) Pick the nearest value from the BOM range (1–2.2 µF film). What corner does it give? 1uF, it gives 1.6 Hz
 d) Look up the NJM4556A input bias current (Q7). Bias current × R_b = a small DC voltage error at
-   the input. How big? Does it matter? (Hint: does DC reach the headphone? Look at C_out.) 50nA, so it gives 50mV. It doesn't matter, because C_out block DC.
+   the input. How big? Does it matter? (Hint: does DC reach the headphone? Look at C_out.) 50nA, so it gives 5mV. It doesn't matter, because C_out block DC.
 
 **Q3 — The mid-supply reference VREF.**
 a) Why do two equal resistors give VREF = V+/2? Because I is the same and V1 = V2 = IR1 = IR2
-b) Choose a value between 10 kΩ and 100 kΩ. How much current flows through the divider? 53uA for R=47kΩ
+b) Choose a value between 10 kΩ and 100 kΩ. How much current flows through the divider? 250uA for R=10kΩ
 c) For the filter, the resistance C_ref "sees" is both resistors in parallel: R_top·R_bot /
-   (R_top + R_bot), which for equal resistors is half of one. Value? 23.5kΩ
+   (R_top + R_bot), which for equal resistors is half of one. Value? 5kΩ
 d) Corner frequency with C_ref = 47 µF. (This is a *low-pass*: it lets DC through and removes
-   the supply noise above the corner. Same formula.) 0.144Hz
-e) Time until VREF has settled after power-up (idea 5). 99% will be at 5t. t = RC = 1.1sec, so 5.5sec
+   the supply noise above the corner. Same formula.) 0.68Hz
+e) Time until VREF has settled after power-up (idea 5). 99% will be at 5t. t = RC = 0.235sec, so 5t is 1.175sec
 
 **Q4 — R_bleed and the unmute delay.**
 a) C_out (1000 µF) charges through R_bleed. For "charged within 3 s", what's the largest τ
