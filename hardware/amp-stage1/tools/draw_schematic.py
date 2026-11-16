@@ -31,7 +31,7 @@ with schemdraw.Drawing(show=False) as d:
     d += elm.Inductor2(loops=2).right().label("FB1\nferrite")
     d += elm.Dot()
     vplus = d.here
-    d += elm.Vdd().at(vplus).label("V+")
+    d.add(elm.Label().at((vplus[0] + 0.2, vplus[1] + 0.4)).label("V+ (filtered)", halign="left"))
     d += elm.Capacitor(polar=True).at(vplus).down().label("C_bulk\n470 µF", loc="bottom")
     d += elm.Ground()
 
