@@ -223,10 +223,10 @@ e) Time until VREF has settled after power-up (idea 5). 99% will be at 5t. t = R
 
 **Q4 — R_bleed and the unmute delay.**
 a) C_out (1000 µF) charges through R_bleed. For "charged within 3 s", what's the largest τ
-   allowed (idea 5)? And so the largest R_bleed?
-b) Pick a standard value at or below that.
+   allowed (idea 5)? And so the largest R_bleed? To have 99%, τ=0.6s, so R = 600Ω
+b) Pick a standard value at or below that. closest is 560Ω
 c) R_bleed is in parallel with the headphone. At 1 Vrms, how much current does it take, compared
-   with the 32 Ω headphone's current? Is it a problem?
+   with the 32 Ω headphone's current? Is it a problem? I_phone/I_bleed = R_bleed/R_phone = 17.5. It is not a problem
 
 **Q5 — Relay driver.** (Needs your relay's datasheet.)
 a) Find the coil resistance (or nominal coil current) for the 5 V version. Coil current = 5 V /
