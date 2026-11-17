@@ -43,7 +43,7 @@ Values are typical starting points; the M2 schematic in `hardware/amp-stage1/` i
 | Electrolytic 47 µF, ≥10 V | 1 | Filters the mid-supply bias point |
 | Electrolytic 470 µF, ≥10 V | 1 | Bulk capacitor at the amp supply, behind the soft-start switch |
 | Ferrite bead (through-hole) or 10–47 µH inductor | 1 | Keeps amp current pulses off the shared 5 V |
-| 5 V signal relay, DPDT | 1 | Mute relay in series with the outputs |
+| Panasonic TQ2-5V (5 V DPDT signal relay, through-hole) | 1 | Mute relay in series with the outputs; gold-clad contacts for low-level audio |
 | BC547 or 2N3904 | 1 | GPIO drives the relay coil |
 | Dummy load resistors 33 Ω and 82 Ω, ~1 W | 2 + 2 | Test loads for the multimeter checks |
 
