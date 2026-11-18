@@ -230,11 +230,11 @@ c) R_bleed is in parallel with the headphone. At 1 Vrms, how much current does i
 
 **Q5 — Relay driver.** (Needs your relay's datasheet.)
 a) Find the coil resistance (or nominal coil current) for the 5 V version. Coil current = 5 V /
-   coil resistance.
-b) Base current for "fully on" (idea 7).
-c) R_base from a 3.3 V GPIO; pick the nearest standard value *below* (more base current is safe).
-d) An RP2040 GPIO delivers 4 mA by default (12 mA max if configured). Enough?
-e) In one sentence: what does the 1N4148 across the coil do?
+   coil resistance. 178Ω, so I  = 28mA
+b) Base current for "fully on" (idea 7). So we need to have 1/10th of coil current to be fully on, so 2.8mA
+c) R_base from a 3.3 V GPIO; pick the nearest standard value *below* (more base current is safe). Ideal is (3.3 - 0.7)/(2.8mA) = 928Ω, so 820Ω
+d) An RP2040 GPIO delivers 4 mA by default (12 mA max if configured). Enough? Yes
+e) In one sentence: what does the 1N4148 across the coil do? When device is switch off, coil will produce electrical spike, and diod pass that spike back
 
 **Q6 — Where will it clip?**
 a) Full scale is 2.1 Vrms. Peak voltage?
