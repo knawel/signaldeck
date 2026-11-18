@@ -31,24 +31,34 @@ This BOM is for the **prototype**, not the final production-quality device.
 
 ## B2. Headphone amplifier, stage 1 (NJM4556A, breadboard)
 
-Preliminary list (resistors not listed), from the agreed design (`architecture.md`, section 6).
-Values are typical starting points; the M2 schematic in `hardware/amp-stage1/` is the final word.
+Final values for Part A, from the answers in `hardware/amp-stage1/README.md` section 3.2 (Q1-Q6).
+Quantities cover both channels; spares are noted. Resistors are ordinary 1/4 W metal film
+unless noted; check the assortment (section C) for 4.7 Ω, 560 Ω and 820 Ω, which kits often skip.
 
-| Item | Qty | Specification / notes |
-|---|---:|---|
-| NJM4556AD (DIP-8) | 2 | One plus a spare |
-| DIP-8 socket | 2 | Swap the chip without desoldering |
-| Electrolytic 1000 µF, ≥10 V, low-ESR | 4 | Output coupling (2 + 2 spare); 470 µF minimum |
-| Film capacitor 1–2.2 µF | 2 | Input coupling: DAC output is centred on 0 V, amp input sits at mid-supply |
-| Electrolytic 47 µF, ≥10 V | 1 | Filters the mid-supply bias point |
-| Electrolytic 470 µF, ≥10 V | 1 | Bulk capacitor at the amp supply, behind the soft-start switch |
-| Ferrite bead (through-hole) or 10–47 µH inductor | 1 | Keeps amp current pulses off the shared 5 V |
-| Panasonic TQ2-5V (5 V DPDT signal relay, through-hole) | 1 | Mute relay in series with the outputs; gold-clad contacts for low-level audio |
-| BC547 or 2N3904 | 1 | GPIO drives the relay coil |
-| Dummy load resistors 33 Ω and 82 Ω, ~1 W | 2 + 2 | Test loads for the multimeter checks |
+| Ref | Item | Qty | Specification / notes |
+|---|---|---:|---|
+| U1 | NJM4556AD (DIP-8) | 2 | One plus a spare |
+| | DIP-8 socket | 2 | Swap the chip without desoldering |
+| R_b | Resistor 100 kΩ | 2 | Input bias to VREF; the DAC's load (Q2) |
+| R_top, R_bot | Resistor 10 kΩ | 2 | VREF divider (Q3) |
+| R_s | Resistor 4.7 Ω | 2 | Output series resistor |
+| R_bleed | Resistor 560 Ω | 2 | Charges C_out within ~3 s (Q4) |
+| R_base | Resistor 820 Ω | 1 | Relay driver base, ~3.2 mA from a 3.3 V GPIO (Q5) |
+| C_in | Film capacitor 1 µF, 5 mm pitch | 2 (+1) | Input coupling, corner 1.6 Hz (Q2); film, not ceramic |
+| C_out | Electrolytic 1000 µF, ≥10 V, low-ESR | 2 (+2) | Output coupling, corner 4.3 Hz at 32 Ω (Q1) |
+| C_ref | Electrolytic 47 µF, ≥10 V | 1 | Filters VREF (Q3) |
+| C_bulk | Electrolytic 470 µF, ≥10 V | 1 | Bulk capacitor at the amp supply |
+| | 100 nF ceramic + 10 µF electrolytic | 1 + 1 | Decoupling at U1 pins 8/4 (section C stock) |
+| FB1 | Ferrite bead (through-hole) or 10-47 µH inductor | 1 | Keeps amp current pulses off the shared 5 V |
+| K1 | Panasonic TQ2-5V (5 V DPDT signal relay) | 1 | Mute relay, coil 178 Ω / 28 mA (Q5); gold-clad contacts |
+| Q1 | BC547 (or 2N3904) | 1 | GPIO drives the relay coil |
+| D1 | 1N4148 | 1 | Flyback diode across the coil (section C stock) |
+| | Dummy load resistors 33 Ω and 82 Ω, ~1 W | 2 + 2 | Test loads (steps A3-A7) |
+| | 3.5 mm stereo socket, breadboard breakout | 1 | Headphone connection on the breadboard |
+| | Cheap headphones | 1 | First listening test (A6), not the DT770 / M40x |
 
-100 nF / 10 µF decoupling and 1N4148 (relay flyback) come from section C.
-The soft-start switch for the audio rail (P-MOSFET or load-switch IC) is chosen in the power lab.
+Buy the NJM4556AD and TQ2-5V from a franchised distributor (Mouser, DigiKey, TME, Farnell).
+The soft-start switch for the audio rail (P-MOSFET or load-switch IC) is chosen in Part B; not yet.
 
 ## C. General analog components
 
