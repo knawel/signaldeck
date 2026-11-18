@@ -33,7 +33,7 @@ This BOM is for the **prototype**, not the final production-quality device.
 
 Final values for Part A, from the answers in `hardware/amp-stage1/README.md` section 3.2 (Q1-Q6).
 Quantities cover both channels; spares are noted. Resistors are ordinary 1/4 W metal film
-unless noted; check the assortment (section C) for 4.7 Ω, 560 Ω and 820 Ω, which kits often skip.
+unless noted. **In stock:** 1/4 W resistor kit; check it for 4.7 Ω, 560 Ω and 820 Ω, which kits often skip.
 
 | Ref | Item | Qty | Specification / notes |
 |---|---|---:|---|
@@ -48,7 +48,7 @@ unless noted; check the assortment (section C) for 4.7 Ω, 560 Ω and 820 Ω, wh
 | C_out | Electrolytic 1000 µF, ≥10 V, low-ESR | 2 (+2) | Output coupling, corner 4.3 Hz at 32 Ω (Q1) |
 | C_ref | Electrolytic 47 µF, ≥10 V | 1 | Filters VREF (Q3) |
 | C_bulk | Electrolytic 470 µF, ≥10 V | 1 | Bulk capacitor at the amp supply |
-| | 100 nF ceramic + 10 µF electrolytic | 1 + 1 | Decoupling at U1 pins 8/4 (section C stock) |
+| | 100 nF ceramic + 10 µF electrolytic | 1 + 1 | Decoupling at U1 pins 8/4. **In stock** |
 | FB1 | Ferrite bead (through-hole) or 10-47 µH inductor | 1 | Keeps amp current pulses off the shared 5 V |
 | K1 | Panasonic TQ2-5V (5 V DPDT signal relay) | 1 | Mute relay, coil 178 Ω / 28 mA (Q5); gold-clad contacts |
 | Q1 | BC547 (or 2N3904) | 1 | GPIO drives the relay coil. **In stock** (transistor kit) |
