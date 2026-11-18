@@ -33,7 +33,7 @@ This BOM is for the **prototype**, not the final production-quality device.
 
 Final values for Part A, from the answers in `hardware/amp-stage1/README.md` section 3.2 (Q1-Q6).
 Quantities cover both channels; spares are noted. Resistors are ordinary 1/4 W metal film
-unless noted. **In stock:** 1/4 W resistor kit; check it for 4.7 Ω, 560 Ω and 820 Ω, which kits often skip.
+unless noted. **In stock:** 1/4 W resistor kit, including 4.7 Ω, 560 Ω and 820 Ω.
 
 | Ref | Item | Qty | Specification / notes |
 |---|---|---:|---|
