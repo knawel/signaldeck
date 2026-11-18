@@ -51,8 +51,8 @@ unless noted; check the assortment (section C) for 4.7 Ω, 560 Ω and 820 Ω, wh
 | | 100 nF ceramic + 10 µF electrolytic | 1 + 1 | Decoupling at U1 pins 8/4 (section C stock) |
 | FB1 | Ferrite bead (through-hole) or 10-47 µH inductor | 1 | Keeps amp current pulses off the shared 5 V |
 | K1 | Panasonic TQ2-5V (5 V DPDT signal relay) | 1 | Mute relay, coil 178 Ω / 28 mA (Q5); gold-clad contacts |
-| Q1 | BC547 (or 2N3904) | 1 | GPIO drives the relay coil |
-| D1 | 1N4148 | 1 | Flyback diode across the coil (section C stock) |
+| Q1 | BC547 (or 2N3904) | 1 | GPIO drives the relay coil. **In stock** (transistor kit) |
+| D1 | 1N4148 | 1 | Flyback diode across the coil. **In stock** |
 | | Dummy load resistors 33 Ω and 82 Ω, ~1 W | 2 + 2 | Test loads (steps A3-A7) |
 | | 3.5 mm stereo socket, breadboard breakout | 1 | Headphone connection on the breadboard |
 | | Cheap headphones | 1 | First listening test (A6), not the DT770 / M40x |
