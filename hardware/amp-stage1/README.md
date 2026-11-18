@@ -237,14 +237,21 @@ d) An RP2040 GPIO delivers 4 mA by default (12 mA max if configured). Enough? Ye
 e) In one sentence: what does the 1N4148 across the coil do? When device is switch off, coil will produce electrical spike, and diod pass that spike back
 
 **Q6 — Where will it clip?**
-a) Full scale is 2.1 Vrms. Peak voltage?
+a) Full scale is 2.1 Vrms. Peak voltage? 2.1*1.414 = 2.97V
 b) The output idles at VREF = 2.5 V, so it has 2.5 V of room up to 5 V and 2.5 V down to 0 V. In
    the datasheet, find "maximum output voltage" (V_OM) and its conditions (supply and load). It
    tells how close to the rails the output gets: e.g. ±13 V on ±15 V supplies means about 2 V lost
-   on each side. Estimate the loss for our heavy load (32 Ω is much heavier than most test loads,
-   so expect more loss).
-c) Largest clean peak = 2.5 V − loss. Convert to Vrms.
-d) In dBFS: 20·log₁₀(V_clip_rms / 2.1). Step A4 will show how close your estimate is.
+   on each side. The loss depends on the output **current**, not on the load resistance: for each
+   row work out I = V_OM / R_L, so you have two points "current → loss".
+   Test conditions: V+/V-=±15V
+   Swing 1 (RL≥2kΩ): ±13.5V → 1.5 V lost, I = 13.5/2000 = 6.75mA
+   Swing 2 (RL≥150Ω): ±11V → 4 V lost, I = 11/150 = 73mA
+c) Largest clean peak = 2.5 V − loss. Convert to Vrms. (The loss grows with the peak itself. Fit a
+   straight line through the two points, loss = L₀ + k·I: k is a resistance inside the op-amp, so
+   peak = (2.5 − L₀) × R_load / (R_load + k), a voltage divider.)
+   k = 2.5 V / 66.25 mA = 37.7 Ω, L₀ = 1.5 − 37.7 × 0.00675 = 1.25 V
+   peak = 1.25 × 36.7 / (36.7 + 37.7) = 0.61 V, or 0.433 Vrms
+d) In dBFS: 20·log₁₀(V_clip_rms / 2.1). Step A4 will show how close your estimate is. -13.7
 
 **Q7 — Datasheet lookups (NJM4556A).**
 a) Supply current, both op-amps, no load: typical and maximum, and the conditions.
