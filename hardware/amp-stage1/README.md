@@ -254,9 +254,9 @@ c) Largest clean peak = 2.5 V − loss. Convert to Vrms. (The loss grows with th
 d) In dBFS: 20·log₁₀(V_clip_rms / 2.1). Step A4 will show how close your estimate is. -13.7
 
 **Q7 — Datasheet lookups (NJM4556A).**
-a) Supply current, both op-amps, no load: typical and maximum, and the conditions.
-b) Operating supply voltage range: is a single 5 V (= ±2.5 V) inside it?
-c) Input bias current, typical (used in Q2 d).
+a) Supply current, both op-amps, no load: typical and maximum, and the conditions. typ=9mA, max = 12mA, V+/V-=±15V,Ta=25˚C
+b) Operating supply voltage range: is a single 5 V (= ±2.5 V) inside it? Yes, it is inside:±2V~±18V
+c) Input bias current, typical (used in Q2 d). Typ=50nA, max = 500nA
 d) Is it stable as a follower (gain 1)? Look for "unity gain stable", a follower example circuit,
    or the gain/phase graph. If unclear, say so; we'll decide together.
 
