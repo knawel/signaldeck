@@ -71,7 +71,15 @@ such as R_b and R_bleed, are the ones you work out in section 3. The same circui
 ### Wiring view: what goes on each U1 pin
 
 The schematic shows how the circuit works; this view is for wiring the breadboard. U1 is the
-NJM4556AD, seen from the top with the notch up. Check the pinout against the datasheet.
+NJM4556AM (surface-mount DMP8) soldered on a SOP-8 to DIP-8 adapter, so on the breadboard it
+behaves like a DIP-8 chip with the same pin numbers. The view shows it from the top, pin 1 at the
+top left. Check the pinout against the datasheet.
+
+**Mounting U1 on the adapter (once, before step A2).** The chip's pin 1 has a dot or a bevelled
+edge; line it up with the pin 1 mark on the adapter (adapters map pad n to DIP pin n, but check
+yours). Flux the pads, tack one corner pin, check the alignment of all eight pins, then solder the
+rest. Afterwards check with the multimeter (continuity mode) that each chip pin reaches its DIP pin
+and that no two neighbouring pins are bridged.
 
 ![U1 wiring view](wiring.svg)
 
@@ -88,7 +96,7 @@ Use the table as a checklist before the first power-up (step A2):
 | 7 | OUT B | R_s (R) → C_out (R) → relay → jack RING; and pin 6 |
 | 8 | V+ | V+ (filtered, after the ferrite); + side of the 100 nF and 10 µF |
 
-Pin numbers: check the NJM4556A datasheet for the DIP-8 pinout (standard dual op-amp: outputs on
+Pin numbers: check the NJM4556A datasheet for the pinout (standard dual op-amp: outputs on
 1 and 7, inputs 2/3 and 6/5, V− on 4, V+ on 8). Here V− is GND.
 
 ---

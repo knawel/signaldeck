@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the M2 amp stage 1 schematic (standard symbols) and the NJM4556AD wiring view.
+"""Draw the M2 amp stage 1 schematic (standard symbols) and the U1 wiring view.
 
 Writes hardware/amp-stage1/schematic.svg and hardware/amp-stage1/wiring.svg.
 
@@ -133,7 +133,7 @@ print(f"wrote {OUT}")
 
 
 # ----------------------------------------------------------------------
-# Wiring view: U1 = NJM4556AD, DIP-8 seen from the top (notch up)
+# Wiring view: U1 = NJM4556AM on a SOP-8 to DIP-8 adapter, seen from the top
 # ----------------------------------------------------------------------
 def pin_net(d, at, text, direction):
     d += getattr(elm.Line().at(at), direction)(3.2)
@@ -159,7 +159,7 @@ with schemdraw.Drawing(show=False) as w:
             elm.IcPin(name="V+", pin="8", side="R", slot="4/4", anchorname="p8"),
         ],
         leadlen=1.4, lofst=0.15,
-    ).theta(0).at((0, 0)).label("U1  NJM4556AD\n(notch up, pin 1 top left)", loc="top", fontsize=10))
+    ).theta(0).at((0, 0)).label("U1  NJM4556AM on DIP-8 adapter\n(pin 1 top left)", loc="top", fontsize=10))
     title(w, (u.p1[0] - 9, u.p1[1] + 2.2), "Wiring view: U1 pins, top view")
 
     # follower loops: 1 -> 2 and 7 -> 6, short jumpers on the pin leads

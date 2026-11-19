@@ -38,8 +38,9 @@ unless noted. **In stock:** 1/4 W resistor kit, including 4.7 Ω, 560 Ω and 820
 
 | Ref | Item | Qty | Specification / notes |
 |---|---|---:|---|
-| U1 | NJM4556AD (DIP-8) | 2 | One plus a spare |
-| | DIP-8 socket | 2 | Swap the chip without desoldering |
+| U1 | NJM4556AM (DMP8, SMD, 1.27 mm pitch) | 2 | One plus a spare. The DIP-8 NJM4556AD is NRND at Nisshinbo and out of stock; same die and pinout |
+| | SOP-8/SOIC-8 to DIP-8 adapter board (1.27 mm pitch) | 3 | U1 is soldered on, then plugs in as a DIP-8; pin numbers unchanged. Pick one rated for SOP-8 (DMP8 is a bit wider than narrow SOIC). One spare for a failed solder job |
+| | DIP-8 socket | 2 | Holds the adapter on the perfboard build; swap without desoldering |
 | R_b | Resistor 100 kΩ | 2 | Input bias to VREF; the DAC's load (Q2) |
 | R_top, R_bot | Resistor 10 kΩ | 2 | VREF divider (Q3) |
 | R_s | Resistor 4.7 Ω | 2 | Output series resistor |
@@ -61,7 +62,7 @@ unless noted. **In stock:** 1/4 W resistor kit, including 4.7 Ω, 560 Ω and 820
 Also in the M2 order (one shipping fee, free from 300 PLN at Mouser/DigiKey): a spare TQ2-5V and
 the section B items marked **ordered with M2** (second breadboard, M3 panel sockets, M5 encoders).
 
-Buy the NJM4556AD and TQ2-5V from a franchised distributor (Mouser, DigiKey, TME, Farnell).
+Buy the NJM4556AM and TQ2-5V from a franchised distributor (Mouser, DigiKey, TME, Farnell).
 The soft-start switch for the audio rail (P-MOSFET or load-switch IC) is chosen in Part B; not yet.
 
 ## C. General analog components
