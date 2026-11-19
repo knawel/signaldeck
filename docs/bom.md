@@ -19,15 +19,16 @@ This BOM is for the **prototype**, not the final production-quality device.
 
 | Item | Qty | Specification / notes | Status |
 |---|---:|---|---|
-| Rotary encoder, no push switch | 2 | Endless, 6 mm shaft (EC11 class); buy one detented and one smooth to compare the feel | Required for the volume lab |
-| 3.5 mm TRS panel socket | 1 | Stereo headphone output, **with switch contacts** (headphone detection) | Required |
-| 6.35 mm TRS panel socket | 1 | Stereo headphone output, **with switch contacts** | Required |
+| Rotary encoder, no push switch | 2 | Endless, 6 mm shaft (EC11 class); buy one detented and one smooth to compare the feel | Required for the volume lab (M5); **ordered with M2** |
+| 3.5 mm TRS panel socket | 1 | Stereo headphone output, **with switch contacts** (headphone detection) | Required (M3); **ordered with M2** |
+| 6.35 mm TRS panel socket | 1 | Stereo headphone output, **with switch contacts** | Required (M3); **ordered with M2** |
 | Perfboard | 2 | 2.54 mm pitch | Recommended |
 | Hook-up wire | ~5 m | 24-26 AWG stranded, several colors | Recommended |
 | Shielded audio cable | ~1 m | For analog interconnects | Recommended |
 | Screw terminals | assortment | 2/3-pin | Optional |
 | JST-XH or similar connectors | assortment | 2/3/4/8-pin; 8-pin for the amp module connector (`pinout.md`) | Recommended |
 | Heat-shrink tubing | assortment | General assembly | Recommended |
+| Breadboard (second) | 1 | Full or medium size; the M1 board holds the RP2040 and DAC, this one the amp | M2; **ordered with M2** |
 
 ## B2. Headphone amplifier, stage 1 (NJM4556A, breadboard)
 
@@ -56,6 +57,9 @@ unless noted. **In stock:** 1/4 W resistor kit, including 4.7 Ω, 560 Ω and 820
 | | Dummy load resistors 33 Ω and 82 Ω, ~1 W | 2 + 2 | Test loads (steps A3-A7) |
 | | 3.5 mm stereo socket, breadboard breakout | 1 | Headphone connection on the breadboard |
 | | Cheap headphones | 1 | First listening test (A6), not the DT770 / M40x |
+
+Also in the M2 order (one shipping fee, free from 300 PLN at Mouser/DigiKey): a spare TQ2-5V and
+the section B items marked **ordered with M2** (second breadboard, M3 panel sockets, M5 encoders).
 
 Buy the NJM4556AD and TQ2-5V from a franchised distributor (Mouser, DigiKey, TME, Farnell).
 The soft-start switch for the audio rail (P-MOSFET or load-switch IC) is chosen in Part B; not yet.
