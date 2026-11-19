@@ -58,6 +58,7 @@ in `firmware/labs/` were the learning series.
 - M2: NJM4556A stage 1 on the breadboard (Part A), soft-start rail + mute relay + sequencing (Part B);
   guide in `hardware/amp-stage1/README.md`
 - M3: basic 3D-printed enclosure mockup for placing boards, knob, sockets
-- M4: OPA1622 + LM27762 amp PCB (hw P2), based on TIDA-01341, built for debugging and adjustment
+- M4: OPA1622 + LM27762 amp PCB (hw P2), based on TIDA-01341, built for debugging and adjustment;
+  runs in parallel with M2 (board lead time). Guide in `hardware/amp-stage2/README.md`, phase 1 started
 - M5: encoder + firmware volume + Feature Unit; meters
 - Optional from lab 8 stretch: PI controller, 44.1 kHz, Windows feedback format

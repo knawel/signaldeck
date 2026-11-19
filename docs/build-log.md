@@ -141,9 +141,10 @@ Planned work:
 
 ## Milestone 4 - Amplifier stage 2 PCB (OPA1622 + LM27762), hw P2
 
-Work folder: `hardware/kicad/amp-p2/`
+Work folder: `hardware/amp-stage2/` (guide in its README; KiCad project in `kicad/`)
 
-**Status:** Not started
+**Status:** Phase 1 (reading + questions) started 2026-11-19, in parallel with M2. Phases 1–3
+(reading, KiCad setup, schematic) need no parts; layout waits for the M3 tray outline.
 
 Design and order a small amp board based on TI TIDA-01341, built to be debugged and adjusted:
 

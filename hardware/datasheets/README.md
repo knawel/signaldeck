@@ -14,4 +14,5 @@ Rule: the datasheet of the **exact part number bought**, from the manufacturer.
 | Panasonic TQ2-5V | `Pansonic_12-15-2025_TQ_Relays.pdf` | TQ family, dated 2025-12-15 (from the file name) | [industry.panasonic.com](https://industry.panasonic.com) | M2 mute relay (coil data: standard type, 5 V DC) |
 
 To add (M2): Waveshare RP2040-Zero pinout (wiki page).
-Later: jacks / encoder / toggle drawings (M3); OPA1622, LM27762, TIDA-01341 (M4).
+To add (M4, now): OPA1622 (SBOS727), LM27762, TIDA-01341 design guide TIDUCR0 + design files.
+Later: jacks / encoder / toggle drawings (M3).
