@@ -80,7 +80,7 @@ independent of the computer, and the OS volume slider should work too.
 Design (prototype):
 
 - **Endless rotary encoder**, without a push switch. A 6 mm shaft takes a 30–40 mm aluminium
-  knob. Detented or smooth (detentless) is to be tried by feel; the exact part is TBD.
+  knob. Part: Bourns PEC11R-4220F-N0024 (24 detents / 24 pulses, M7 bushing, 6 mm D shaft); detented, smooth dropped.
 - **Firmware volume**: each sample is multiplied by a gain before it goes to the DAC.
   `total gain = host volume × knob volume`, so the two work independently.
   - knob: 1 dB steps (faster steps when turned quickly), range about 0 to −80 dB

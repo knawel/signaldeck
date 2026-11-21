@@ -49,6 +49,16 @@ PCM5102A on GP0–2, DMA ping-pong, asynchronous feedback with a P controller on
 - Meters: levels computed in firmware, PWM-driven; DAC always on, amp/meters on a soft-start rail
 - Architecture, decisions, pinout, BOM, build log and README updated to match
 
+## 2026-11-21 — M2 parts ordered
+
+Mouser order for M2 plus the M3/M5 front-panel parts (BOM sections B, B2, B3 updated with part numbers):
+- NJM4556AD (DIP-8) is NRND and out of stock: switched to NJM4556AM on Chip Quik SOP-8 → DIP-8 adapters
+- Encoder Bourns PEC11R-4220F-N0024 (24 det / 24 PPR, M7, D shaft); jacks Neutrik NMJ6HC-S + Amphenol
+  ACJS-MV35-3S (switched); prototype toggle E-Switch 100DP1T1B1M1REH (gold, 1/4"-40)
+- Ferrite bead instead of an inductor (no LC resonance near USB's 1 kHz frame noise)
+- Swap-in op-amps OPA1688 / OPA1656 and a few learning parts (24LC256, 74HC595, LEDs)
+- Still to get locally: cheap headphones, 5 × 7 cm perfboards, flux
+
 ## Next
 
 Project work is organised as milestones (M2–M6 in `docs/build-log.md`), filed by subsystem; labs 0–8

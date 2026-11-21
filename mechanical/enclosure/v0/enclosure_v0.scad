@@ -59,11 +59,11 @@ rib_w          = 1.2;   // three 0.4 mm lines: strong enough to print, easy to c
 // ------------------------------------------------------------------ front components
 // All MEASURE YOUR PARTS: hole sizes depend on the exact jack/encoder/toggle bought.
 // Positions are [u, v] in mm from the panel's lower-left corner, seen from the front.
-toggle_hole  = 6.2;   toggle_pos  = [12, 31];   // mini toggle, M6 bushing
-enc_hole     = 7.2;   enc_pos     = [37, 31];   // EC11-type encoder, M7 bushing
+toggle_hole  = 6.4;   toggle_pos  = [12, 31];   // E-Switch 100DP1T1B1M1REH, 1/4"-40 UNS bushing
+enc_hole     = 7.2;   enc_pos     = [37, 31];   // Bourns PEC11R-4220F-N0024, M7×0.75 bushing
 knob_d       = 30;                              // for the preview and clearance check
-jack35_hole  = 6.2;   jack35_pos  = [61, 31];   // 3.5 mm panel jack, M6 thread (some are M8)
-jack635_hole = 9.5;   jack635_pos = [77, 31];   // 6.35 mm panel jack, often M9–M11: MEASURE
+jack35_hole  = 6.2;   jack35_pos  = [61, 31];   // Amphenol ACJS-MV35-3S: MEASURE the thread
+jack635_hole = 9.5;   jack635_pos = [77, 31];   // Neutrik NMJ6HC-S, datasheet "chassis 11.4 mm": MEASURE
 
 meter_cut    = [38, 30];                        // placeholder meter window
 meter_pos    = [[24, 37], [66, 37]];
